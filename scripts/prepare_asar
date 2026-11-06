@@ -45,7 +45,8 @@ patch --batch --forward --strip 1 --directory scratch/asar < patches/preload-dis
 patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-safe-header-left.patch
 patch --batch --forward --strip 1 --directory scratch/asar < patches/app-host-json-rpc.patch
 patch --batch --forward --strip 1 --directory scratch/asar < patches/app-host-browser-windows.patch
-rm -rf scratch/asar/node_modules/better-sqlite3
+# Use host-installed native modules, not copies from the macOS Electron archive.
+rm -rf scratch/asar/node_modules/better-sqlite3 scratch/asar/node_modules/@parcel/watcher
 
 patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-request-diagnostics.patch
 patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-startup-diagnostics.patch
