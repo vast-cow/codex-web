@@ -2,6 +2,8 @@
 
 For the consolidated Task 3 timing model, evidence limits and reproduction
 contract, see [startup and RPC investigation](startup-rpc-investigation.md).
+For the request path, isolated timeout checks and connectivity probe results, see
+[Statsig bootstrap investigation](statsig-bootstrap-investigation.md).
 
 ## Evidence from the available capture
 
