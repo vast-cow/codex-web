@@ -39,6 +39,7 @@ const ids = new Set([
   "portId",
 ]);
 const enums = new Set([
+  "asset",
   "stage",
   "kind",
   "action",
@@ -99,6 +100,11 @@ export function metadata(input: Record<string, unknown>) {
         "backend",
         "asset",
         "other",
+        "css",
+        "source-map",
+        "spa-fallback",
+        "not-found",
+        "static-response",
         "html",
         "javascript",
         "POP",

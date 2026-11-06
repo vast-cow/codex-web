@@ -20,6 +20,7 @@
     "prepare:asar": "./scripts/prepare_asar",
     "preserver": "npm run build:server && npm run build:browser",
     "server": "CODEX_CLI_PATH=$(which codex) node src/server/main.js",
+    "test:static-routes": "npm run build:server && node --test tests/static-routes.cjs tests/vite-static-routes.cjs",
     "test:diagnostics": "node --test tests/diagnostics.cjs",
     "test:git-watcher": "node --test tests/git-watcher.cjs"
   },

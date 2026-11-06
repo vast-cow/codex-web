@@ -268,3 +268,24 @@ browser page=P1 connection=C1 ipc.dispatch-complete rpc=R1 dispatchMs=0.3
 This is a synthetic event model example, not evidence that the production timeout
 is fixed. The tests simulate transport and elapsed time; a live browser capture is
 still required to explain the observed startup and timeout delays.
+
+### Static response diagnostics
+
+At debug level, backend `http.response` events include a predefined `asset`
+category (`javascript`, `css`, `source-map`, or `other`) and `action`
+(`static-response`, `not-found`, `spa-fallback`, or `other`), plus status and
+response duration. `bytes`, when present, is the declared Content-Length, not
+measured network transfer size. No asset filename, filesystem path, full URL,
+or query value is recorded. A JavaScript content type indicates a response MIME
+type and does not establish successful execution. A conditional static 304 can
+be classified as `static-response`; inspect status alongside action.
+
+The historical capture reported 539 asset-classified SPA fallback events and
+corresponding successful HTML responses. Those observations establish HTML
+fallback for asset-classified requests, but do not distinguish missing executable
+JavaScript or CSS from missing source maps. Missing executable assets could
+prevent application startup; source-map requests could instead affect debugging
+without breaking execution. Neither explanation is confirmed by that capture.
+The separate roughly 27.5-second JavaScript response establishes latency, not
+its cause or a causal connection to those fallback events. New category, status,
+action, duration, and size metadata support investigating these separately.

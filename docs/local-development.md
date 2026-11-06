@@ -175,3 +175,18 @@ Anyone with access may execute commands, access local files and credentials,
 and use the signed-in account with the host process's permissions. Use only
 trusted tailnet access, never Tailscale Funnel. Read the full
 [security considerations](../README.md#security-considerations).
+
+## Static assets and page navigation
+
+The backend and Vite development server serve existing static files before page
+fallback. Only `/`, `/thread/:id`, and `/share/receive` are page routes, matching
+`src/browser/routes.ts`. Refreshing a thread deep link serves `index.html`.
+Missing `.js`, `.css`, and `.map` files return 404, including requests with query
+strings. Other unmatched endpoints return 404. The existing backend upload and
+WebSocket proxies and backend `/@fs/` serving remain in place.
+
+Run `npm run test:static-routes` for backend injection tests and Vite HTTP and
+WebSocket proxy checks. Vite tests require the unpacked application prepared by
+the normal setup. They disable dependency discovery to isolate routing from
+unpacked application dependency-scanning errors; they do not verify full browser
+startup or JavaScript execution.

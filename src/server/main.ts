@@ -23,7 +23,7 @@ import { parseArgs as parseCliArgs } from "node:util";
 import { WebSocket, WebSocketServer } from "ws";
 import Fastify from "fastify";
 import fastifyMultipart from "@fastify/multipart";
-import fastifyStatic from "@fastify/static";
+import { registerStaticRoutes } from "./staticRoutes";
 import { installModuleAliasHook } from "./module";
 
 type ServerOptions = {
@@ -455,24 +455,6 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
   const bridgeState = getIpcMainBridgeState();
   diagnostic("info", "server.start", { serverId });
   const app = Fastify({ logger: false });
-  const httpStarts = new WeakMap<object, number>();
-  app.addHook("onRequest", async (request) => {
-    httpStarts.set(request, performance.now());
-  });
-  app.addHook("onResponse", async (request, reply) => {
-    const type = String(reply.getHeader("content-type") ?? "").split(";")[0];
-    diagnostic("debug", "http.response", {
-      route: routeCategory(request.url),
-      status: reply.statusCode,
-      durationMs:
-        performance.now() - (httpStarts.get(request) ?? performance.now()),
-      kind: type?.includes("html")
-        ? "html"
-        : type?.includes("javascript")
-          ? "javascript"
-          : "other",
-    });
-  });
   const websocketServer = new WebSocketServer({ noServer: true });
 
   await app.register(fastifyMultipart, {
@@ -511,34 +493,11 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
     return reply.send({ files });
   });
 
-  await app.register(fastifyStatic, {
-    root: "/",
-    prefix: "/@fs/",
-    decorateReply: false,
-  });
-
-  await app.register(fastifyStatic, {
-    root: path.resolve(__dirname, "../../scratch/asar/webview"),
-    prefix: "/",
-  });
-
-  app.get("/", async (_request, reply) => {
-    return reply.sendFile("index.html");
-  });
-
-  app.setNotFoundHandler((request, reply) => {
-    if (request.url.startsWith("/@fs/")) {
-      return reply.code(404).send({ error: "Not Found" });
-    }
-
-    if (request.method === "GET") {
-      diagnostic("debug", "http.spa-fallback", {
-        route: routeCategory(request.url),
-      });
-      return reply.sendFile("index.html");
-    }
-    return reply.code(404).send({ error: "Not Found" });
-  });
+  await registerStaticRoutes(
+    app,
+    path.resolve(__dirname, "../../scratch/asar/webview"),
+    diagnostic,
+  );
 
   app.server.on("upgrade", (request, socket, head) => {
     const requestUrl = request.url ?? "/";
