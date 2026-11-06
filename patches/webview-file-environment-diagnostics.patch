@@ -1,0 +1,69 @@
+--- a/webview/assets/app-shared-8bd9d0399038.js
++++ b/webview/assets/app-shared-8bd9d0399038.js
+@@ -150407,7 +150407,7 @@
+         async readState() {
+           try {
+             let { dataBase64: e } =
+-                await this.options.requestClient.sendRequest(`fs/readFile`, {
++                await codexWebReadFileDiagnostic(this.options.requestClient, `pasted-text-registry`, {
+                   path: await this.getRegistryPath(),
+                 }),
+               t = await this.getAttachmentsRoot(),
+@@ -174530,6 +174530,16 @@
+           return this.sendConfigReadRequestMemoized(n, e, t);
+         }
+         createRequest(e, t, n, r = null) {
++          if (e === `fs/readFile`) {
++            try {
++              console.debug(`[codex-web:file-read]`, {
++                boundary: `shared-client-dispatch`,
++                context: this.hostId === `durable` ? `hosted` : this.hostId === `local` ? `local` : `other`,
++                hasEnvironmentId: typeof t?.environmentId === `string` && t.environmentId.length > 0,
++                hasConversationContext: Ufn(t) != null,
++              });
++            } catch {}
++          }
+           let i = jj(
+               e === `plugin/list` || e === `thread/resume`
+                 ? `${e}:${JT()}`
+@@ -256554,7 +256564,7 @@
+     ({ fileName: e, isFile: t }) => t && e.toLowerCase() === WHr,
+   );
+   if (n == null) return !1;
+-  let { dataBase64: r } = await e.sendRequest(`fs/readFile`, {
++  let { dataBase64: r } = await codexWebReadFileDiagnostic(e, `plugin-inventory`, {
+     path: qM(t, n.fileName),
+   });
+   return _Hr(gZ(r)) != null;
+@@ -257733,7 +257743,7 @@
+   let n = [],
+     r = 0;
+   for (let i of t) {
+-    let { dataBase64: t } = await e.sendRequest(`fs/readFile`, { path: i });
++    let { dataBase64: t } = await codexWebReadFileDiagnostic(e, `workspace-snapshot`, { path: i });
+     if (((r += sWr(t)), r > lWr)) return null;
+     n.push(gZ(t));
+   }
+@@ -361464,3 +361474,22 @@
+   KH as zzt,
+ };
+ //# sourceMappingURL=app-shared-8bd9d0399038.js.map
++
++// Only fixed categories and presence flags may cross this diagnostic boundary.
++async function codexWebReadFileDiagnostic(client, callPath, params) {
++  try {
++    return await client.sendRequest(`fs/readFile`, params);
++  } catch (error) {
++    if (error?.message?.includes(`fs/readFile requires an environmentId`)) {
++      try {
++        console.warn(`[codex-web:file-read]`, {
++          boundary: `shared-caller-rejection`,
++          callPath: [`pasted-text-registry`, `plugin-inventory`, `workspace-snapshot`].includes(callPath) ? callPath : `other`,
++          context: client.hostId === `durable` ? `hosted` : client.hostId === `local` ? `local` : `other`,
++          hasEnvironmentId: typeof params?.environmentId === `string` && params.environmentId.length > 0,
++        });
++      } catch {}
++    }
++    throw error;
++  }
++}

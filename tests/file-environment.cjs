@@ -45,3 +45,68 @@ test('missing or empty environments fail before dispatch; remote errors propagat
   await assert.rejects(adapter.readFile({ environmentId: 'unknown', path: '/file' }), /Unknown environment/);
   assert.equal(calls, 1);
 });
+
+const sharedSource = fs.readFileSync('scratch/asar/webview/assets/app-shared-8bd9d0399038.js', 'utf8');
+const diagnosticSource = sharedSource.slice(sharedSource.indexOf('async function codexWebReadFileDiagnostic('));
+assert.ok(diagnosticSource.startsWith('async function codexWebReadFileDiagnostic('));
+function diagnosticReader(warn) {
+  return vm.runInNewContext(`${diagnosticSource}\ncodexWebReadFileDiagnostic`, { console: { warn } });
+}
+
+test('local path-only reads preserve parameters, receiver and result without logging', async () => {
+  const read = diagnosticReader(() => assert.fail('successful reads must not warn'));
+  const params = { path: '/private/local' };
+  const result = { dataBase64: 'b2s=' };
+  const client = { hostId: 'local', async sendRequest(method, value) {
+    assert.equal(this, client);
+    assert.equal(method, 'fs/readFile');
+    assert.equal(value, params);
+    return result;
+  }};
+  assert.equal(await read(client, 'workspace-snapshot', params), result);
+});
+
+test('candidate rejections emit only bounded metadata and preserve the original error', async () => {
+  for (const callPath of ['pasted-text-registry', 'plugin-inventory', 'workspace-snapshot', '/secret']) {
+    const logs = [];
+    const read = diagnosticReader((...args) => logs.push(args));
+    const error = Error('fs/readFile requires an environmentId');
+    await assert.rejects(read({ hostId: 'durable', sendRequest: async () => { throw error; } },
+      callPath, { path: '/secret', conversationId: 'secret', credential: 'secret' }), e => e === error);
+    assert.deepEqual(JSON.parse(JSON.stringify(logs)), [['[codex-web:file-read]', {
+      boundary: 'shared-caller-rejection', callPath: callPath === '/secret' ? 'other' : callPath,
+      context: 'hosted', hasEnvironmentId: false,
+    }]]);
+  }
+});
+
+test('unrelated failures and logging failures retain original rejection', async () => {
+  for (const message of ['not found', 'fs/readFile requires an environmentId']) {
+    const error = Error(message);
+    const read = diagnosticReader(() => { throw Error('logger unavailable'); });
+    await assert.rejects(read({ sendRequest: async () => { throw error; } }, 'plugin-inventory', {}), e => e === error);
+  }
+});
+
+test('all three candidate callers use the diagnostic wrapper', () => {
+  for (const callPath of ['pasted-text-registry', 'plugin-inventory', 'workspace-snapshot']) {
+    assert.ok(sharedSource.includes(`, \`${callPath}\`, {`));
+  }
+});
+
+test('shared dispatch diagnostics expose presence flags without identifiers', () => {
+  const start = sharedSource.indexOf('        createRequest(e, t, n, r = null) {');
+  const end = sharedSource.indexOf('          let i = jj(', start);
+  const body = sharedSource.slice(start + '        createRequest(e, t, n, r = null) {'.length, end);
+  const logs = [];
+  const dispatch = vm.runInNewContext(`(function(e, t) { ${body} })`, {
+    console: { debug: (...args) => logs.push(args) }, Ufn: value => value?.threadId,
+  });
+  dispatch.call({ hostId: 'durable' }, 'fs/readFile', { path: '/secret', environmentId: 'secret', threadId: 'secret' });
+  dispatch.call({ hostId: 'local' }, 'fs/readFile', { path: '/secret' });
+  dispatch.call({ hostId: 'private-host' }, 'other', {});
+  assert.deepEqual(JSON.parse(JSON.stringify(logs)), [
+    ['[codex-web:file-read]', { boundary: 'shared-client-dispatch', context: 'hosted', hasEnvironmentId: true, hasConversationContext: true }],
+    ['[codex-web:file-read]', { boundary: 'shared-client-dispatch', context: 'local', hasEnvironmentId: false, hasConversationContext: false }],
+  ]);
+});

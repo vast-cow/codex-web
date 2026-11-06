@@ -50,3 +50,5 @@ rm -rf scratch/asar/node_modules/better-sqlite3 scratch/asar/node_modules/@parce
 
 patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-request-diagnostics.patch
 patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-startup-diagnostics.patch
+
+patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-file-environment-diagnostics.patch
