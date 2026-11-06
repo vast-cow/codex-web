@@ -51,6 +51,22 @@ async function prepare(
     for (const match of text.matchAll(/^\+\+\+ b\/webview\/(\S+)/gm))
       patched.add(match[1]);
   }
+  // Fail closed on malformed metadata; never cache transformed bytes under an
+  // upstream filename that no longer hashes their content.
+  let minified = [];
+  try {
+    minified = JSON.parse(
+      await fs.readFile(path.join(root, ".minified-assets.json"), "utf8"),
+    );
+    if (
+      !Array.isArray(minified) ||
+      minified.some((name) => typeof name !== "string")
+    )
+      throw new Error("Invalid minified asset metadata");
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  for (const name of minified) patched.add(name);
   const immutable = (await fs.readdir(path.join(root, "assets")))
     .map((name) => `assets/${name}`)
     .filter(

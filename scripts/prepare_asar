@@ -54,3 +54,6 @@ patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-sta
 patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-file-environment-diagnostics.patch
 
 patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-port-diagnostics.patch
+
+# Keep patch inputs formatted and stable; optimize only after every patch succeeds.
+node scripts/minify-webview.cjs

@@ -76,3 +76,73 @@ curl -sS -D - -o /dev/null -H 'Accept-Encoding: identity' -H 'Range: bytes=0-99'
 These curl timings exclude browser parsing and execution. Compression reduces
 transfer bytes, not decoded script size or application work. No browser startup
 speedup is established until the controlled measurements above are collected.
+
+## Conservative extracted-entry minification
+
+`prepare:asar` now runs pinned esbuild after the final successful patch. Only
+`assets/app-initial-<upstream hash>.js` is transformed. Whitespace is minified;
+identifier/syntax minification, bundling, tree shaking and target lowering are
+disabled. Other chunks, the Electron host and upstream source remain unchanged.
+Vite's bridge build remains separate. Legal comments stay inline. Old entry
+source maps and compressed sidecars are deleted; `build:browser` regenerates
+compression after all transformations.
+
+Compatibility risks were assessed before implementation: exports and function
+names can be observable, dynamic imports and cyclic modules must retain their
+identity, and aggressive syntax rewriting may change behavior. Whitespace-only
+transformation still changes function source text and stack trace positions.
+Code relying on `Function.prototype.toString()` formatting remains a risk.
+Source maps for the transformed entry are deliberately unavailable.
+
+The upstream filename is retained as a module identifier, **not a valid digest
+of patched/minified bytes**. Renaming this entry alone would break imports from
+many lazy chunks; recursively rehashing its cyclic graph is outside this change.
+`.minified-assets.json` explicitly excludes transformed assets from immutable
+caching, even if the patch list changes. Thus this solution preserves references
+and uses revalidation rather than claiming new content hashes. Deployments that
+require every filename to hash its final bytes need a graph-aware rebuild and
+should not enable this post-processing in isolation. Purge any previously cached
+immutable version of the entry before rollout. Do not override its `no-cache`
+policy at a CDN. Deploy assets and metadata together and restart the server.
+
+To compare with the unoptimized baseline, use identical clean extractions of the
+same archive and apply all patches in both; omit only the final
+`node scripts/minify-webview.cjs` invocation for the baseline. Build the bridge
+and sidecars in both cases. The minifier prints decoded before/after byte counts;
+compare `.br`/`.gz` separately with `wc -c`. Do not rerun the patch preparation on
+already minified files: preparation starts from the archive each time.
+
+Run `node --test tests/minify-webview.cjs` for export/name, dynamic import,
+literal, license, stale-sidecar, cache exclusion and invalid-input checks.
+These tests cannot establish application-level compatibility.
+
+For each baseline and optimized browser run, follow the recording procedure
+above. In Performance, select navigation through `codex-web:routes-mounted` in
+Timings. In Bottom-up, group by activity and record Compile Script and Evaluate
+Script total/self times (event labels vary by Chrome version). Inspect the Main
+thread to associate each event with the entry URL. Record navigation-to-bootstrap,
+route-mount and first usable composer separately; report medians and ranges for
+at least three cold and three warm runs with identical CPU/network conditions.
+A smaller decoded script does not establish faster compilation or execution.
+
+Before rollout, test login/logout and session restoration, sidebar navigation,
+existing and lazy-loaded threads, sending a message and streamed replies. In
+Network's WS panel, confirm the `/__backend/ipc` upgrade and bidirectional frames,
+and check reconnect after a reload. Record console errors and failed chunk
+requests. Authentication and message tests require an interactive authenticated
+browser; automated static-route tests alone do not cover them.
+
+### Local validation result
+
+Re-extracting the entry from the available ASAR, formatting it, and applying its
+patch sections in preparation order produced 18,311,503 bytes. The final
+whitespace-only configuration produced 12,799,644 bytes: 5,511,859 bytes (30.10%)
+smaller. These are decoded file sizes, not transfer sizes or timing results.
+The focused minifier tests (2), static/Vite route tests (4), diagnostics tests
+(17), and Git watcher test (1) passed. Browser and server builds passed. Vite
+reported upstream missing source maps and an unanalyzable dynamic import.
+No interactive browser was available, so authenticated startup, thread loading,
+messaging, application WebSocket traffic and Compile/Evaluate Script timing
+remain unverified. No startup speed improvement is claimed. A server process
+reported its listening address, but a direct HTTP smoke request did not complete
+within five seconds; this is not evidence of successful application startup.
