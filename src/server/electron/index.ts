@@ -1,3 +1,4 @@
+import { diagnostic } from "../diagnostics";
 type StubFunction = (...args: unknown[]) => unknown;
 type StubListener = (...args: unknown[]) => void;
 type StubMessagePort = {
@@ -69,7 +70,7 @@ function getIpcMainBridgeState(): IpcMainBridgeState {
 }
 
 function log(method: string, args: unknown[]): void {
-  console.log(`[electron-main-stub] ${method}`, args);
+  diagnostic("trace", "electron.stub");
 }
 
 function createDeepStub(pathLabel: string): StubFunction {
@@ -102,6 +103,7 @@ function createDeepStub(pathLabel: string): StubFunction {
 }
 
 function createEmitterStub(label: string): {
+  listenerCount: (event: string) => number;
   addListener: (event: string, listener: StubListener) => unknown;
   emit: (event: string, ...args: unknown[]) => boolean;
   off: (event: string, listener: StubListener) => unknown;
@@ -112,6 +114,9 @@ function createEmitterStub(label: string): {
   const listeners = new Map<string, Set<StubListener>>();
 
   const api = {
+    listenerCount(event: string) {
+      return listeners.get(event)?.size ?? 0;
+    },
     on(event: string, listener: StubListener): unknown {
       log(`${label}.on`, [event, listener]);
       const eventListeners = listeners.get(event) ?? new Set<StubListener>();
@@ -211,7 +216,12 @@ function createIpcMainStub(): {
 
   const pendingPostMessages = new Map<
     string,
-    Array<{ message: unknown; ports: StubMessagePort[]; windowId: number }>
+    Array<{
+      message: unknown;
+      ports: StubMessagePort[];
+      windowId: number;
+      queuedAt: number;
+    }>
   >();
   const registeredPostMessageChannels = new Set<string>();
 
@@ -226,8 +236,12 @@ function createIpcMainStub(): {
       return;
     }
     const pending = pendingPostMessages.get(channel) ?? [];
-    pending.push({ message, ports, windowId });
+    pending.push({ message, ports, windowId, queuedAt: performance.now() });
     pendingPostMessages.set(channel, pending);
+    diagnostic("trace", "ipc.registration-queue", {
+      queueLength: pending.length,
+      windowId,
+    });
   };
 
   bridgeState.handleRendererInvoke = async (
@@ -258,8 +272,16 @@ function createIpcMainStub(): {
       registeredPostMessageChannels.add(channel);
       const pending = pendingPostMessages.get(channel);
       if (pending) {
+        diagnostic("debug", "ipc.registration-flush", {
+          queueLength: pending.length,
+        });
         pendingPostMessages.delete(channel);
-        for (const { message, ports, windowId } of pending) {
+        for (const { message, ports, windowId, queuedAt } of pending) {
+          diagnostic("debug", "ipc.registration-wait", {
+            windowId,
+            ageMs: performance.now() - queuedAt,
+            listeners: emitter.listenerCount(channel),
+          });
           if (!BrowserWindow.fromId(windowId)) continue;
           emitter.emit(channel, createIpcMainEvent(windowId, ports), message);
         }

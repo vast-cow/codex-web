@@ -1,3 +1,5 @@
+import { diagnostic } from "./diagnostics";
+import { routeCategory } from "../server/diagnostics/core";
 export function mapBrowserPathToInitialRoute(pathname: string, search: string) {
   if (pathname === "/share/receive" && search) {
     const params = new URLSearchParams(search);
@@ -60,5 +62,8 @@ export function dispatchNavigateToRoute(path: string): void {
 }
 
 window.addEventListener("popstate", () => {
+  diagnostic("debug", "history.pop", {
+    route: routeCategory(window.location.pathname),
+  });
   dispatchNavigateToRoute(mapBrowserPathToRoute(window.location.pathname));
 });

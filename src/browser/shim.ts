@@ -1,4 +1,12 @@
 import {
+  diagnostic,
+  diagnosticsEnabled,
+  flushDiagnostics,
+  sessionId,
+  pageId,
+} from "./diagnostics";
+import { validEnvelope, routeCategory } from "../server/diagnostics/core";
+import {
   mapBrowserPathToInitialRoute,
   mapMemoryPathToBrowserPath,
 } from "./routes";
@@ -132,6 +140,12 @@ let requestCounter = 0;
 let socket: WebSocket | null = null;
 let needsReload = false;
 let reconnectTimeoutId: number | null = null;
+let connectionId = "";
+let highWater = 0;
+let lastSend = performance.now(),
+  lastReceive = lastSend;
+const queuedAt = new WeakMap<object, number>();
+const started = new Map<string, number>();
 const outboundQueue: RendererToMainMessage[] = [];
 const pendingInvokes = new Map<
   string,
@@ -157,12 +171,18 @@ function unimplemented(method: string): never {
 
 export function emitRendererEvent(channel: string, args: unknown[]): void {
   const listeners = rendererListeners.get(channel);
+  diagnostic("trace", "ipc.dispatch", { listeners: listeners?.size ?? 0 });
   if (!listeners || listeners.size === 0) {
     return;
   }
   const event = { sender: null };
   for (const listener of listeners) {
-    listener(event, ...args);
+    try {
+      listener(event, ...args);
+    } catch (error) {
+      diagnostic("error", "ipc.listener-failure");
+      throw error;
+    }
   }
 }
 
@@ -175,8 +195,13 @@ function handleIncomingMessage(message: MainToRendererMessage): void {
   if (message.type === "ipc-renderer-invoke-result") {
     const pending = pendingInvokes.get(message.requestId);
     if (!pending) {
+      diagnostic("warn", "request.unknown", {
+        requestId: message.requestId,
+        connectionId,
+      });
       return;
     }
+    settle(message.requestId, message.ok);
     pendingInvokes.delete(message.requestId);
     if (message.ok) {
       pending.resolve(message.result);
@@ -187,13 +212,30 @@ function handleIncomingMessage(message: MainToRendererMessage): void {
   }
 
   if (message.type === "message-port-message") {
-    messagePorts.get(message.portId)?.postMessage(message.data);
+    diagnostic(
+      messagePorts.has(message.portId) ? "trace" : "warn",
+      "port.forward",
+      {
+        portId: message.portId,
+        connectionId,
+        ok: messagePorts.has(message.portId),
+      },
+    );
+    try {
+      messagePorts.get(message.portId)?.postMessage(message.data);
+    } catch (error) {
+      diagnostic("error", "port.forward-failure", { portId: message.portId });
+      throw error;
+    }
     return;
   }
 
   if (message.type === "message-port-close") {
     const port = messagePorts.get(message.portId);
     messagePorts.delete(message.portId);
+    diagnostic(port ? "debug" : "warn", "port.close", {
+      portId: message.portId,
+    });
     port?.close();
     return;
   }
@@ -201,8 +243,13 @@ function handleIncomingMessage(message: MainToRendererMessage): void {
   if (message.type === "workspace-directory-entries-result") {
     const pending = pendingDirectoryEntries.get(message.requestId);
     if (!pending) {
+      diagnostic("warn", "request.unknown", {
+        requestId: message.requestId,
+        connectionId,
+      });
       return;
     }
+    settle(message.requestId, message.ok);
     pendingDirectoryEntries.delete(message.requestId);
     if (message.ok) {
       pending.resolve(message.result);
@@ -216,17 +263,47 @@ function flushOutboundQueue(): void {
   if (!socket || socket.readyState !== WebSocket.OPEN) {
     return;
   }
+  diagnostic("trace", "queue.flush", {
+    connectionId,
+    queueLength: outboundQueue.length,
+  });
   for (const message of outboundQueue.splice(0)) {
-    socket.send(JSON.stringify(message));
+    const fields = {
+      connectionId,
+      ...message,
+      ageMs: performance.now() - (queuedAt.get(message) ?? performance.now()),
+    };
+    let encoded: string;
+    try {
+      encoded = JSON.stringify(message);
+    } catch (error) {
+      diagnostic("error", "transport.serialize-failure", fields);
+      throw error;
+    }
+    try {
+      socket.send(encoded);
+      lastSend = performance.now();
+      diagnostic("trace", "transport.send-api", {
+        ...fields,
+        bytes: encoded.length,
+        bufferedAmount: socket.bufferedAmount,
+      });
+    } catch (error) {
+      diagnostic("error", "transport.send-failure", fields);
+      throw error;
+    }
   }
 }
 
 function scheduleReconnect(): void {
   if (reconnectTimeoutId !== null) {
+    diagnostic("debug", "reconnect.skipped");
     return;
   }
+  diagnostic("info", "reconnect.scheduled");
   reconnectTimeoutId = window.setTimeout(() => {
     reconnectTimeoutId = null;
+    diagnostic("info", "reconnect.attempt");
     ensureSocket();
   }, RECONNECT_DELAY_MS);
 }
@@ -240,30 +317,67 @@ function ensureSocket(): void {
     return;
   }
 
+  connectionId = crypto.randomUUID();
+  const attemptId = connectionId;
+  const began = performance.now();
+  diagnostic("info", "socket.attempt", { connectionId, sessionId, pageId });
   socket = new WebSocket(
-    `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/__backend/ipc`,
+    `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/__backend/ipc?diagConnection=${connectionId}&diagSession=${sessionId}&diagPage=${pageId}`,
   );
+  const originatingSocket = socket;
+  const context = () => ({
+    connectionId: attemptId,
+    current: socket === originatingSocket,
+    durationMs: performance.now() - began,
+  });
   socket.addEventListener("open", () => {
+    diagnostic("info", "socket.open", context());
     // App-host RPC transfers MessagePorts once at startup. A new connection needs
     // a fresh app view; replaying requests against the closed ports cannot recover it.
     if (needsReload) {
+      diagnostic("info", "page.reload", { ...context(), stage: "reconnect" });
+      flushDiagnostics();
       window.location.reload();
       return;
     }
     flushOutboundQueue();
   });
   socket.addEventListener("message", (event) => {
+    lastReceive = performance.now();
+    let message: MainToRendererMessage;
     try {
-      const message = JSON.parse(String(event.data)) as MainToRendererMessage;
+      message = JSON.parse(String(event.data));
+    } catch {
+      diagnostic("error", "transport.decode-failure", context());
+      return;
+    }
+    if (!validEnvelope(message)) {
+      diagnostic("warn", "transport.invalid-envelope", context());
+      return;
+    }
+    diagnostic("trace", "transport.receive", { ...context(), ...message });
+    try {
       handleIncomingMessage(message);
-    } catch (error) {
-      console.error(
-        "[electron-stub] failed to parse IPC bridge message",
-        error,
-      );
+    } catch {
+      diagnostic("error", "ipc.dispatch-failure", { ...context(), ...message });
     }
   });
-  socket.addEventListener("close", () => {
+  socket.addEventListener("close", (event) => {
+    diagnostic("warn", "socket.close", {
+      ...context(),
+      code: event.code,
+      wasClean: event.wasClean,
+      queueLength: outboundQueue.length,
+      pending: pendingInvokes.size + pendingDirectoryEntries.size,
+      ports: messagePorts.size,
+      online: navigator.onLine,
+      hidden: document.hidden,
+      sendAgeMs: performance.now() - lastSend,
+      receiveAgeMs: performance.now() - lastReceive,
+    });
+    for (const requestId of started.keys())
+      diagnostic("warn", "request.disconnect", { ...context(), requestId });
+    started.clear();
     needsReload = true;
     const error = new Error("Connection to Codex was lost");
     for (const pending of pendingInvokes.values()) pending.reject(error);
@@ -272,22 +386,62 @@ function ensureSocket(): void {
       pending.reject(error);
     pendingDirectoryEntries.clear();
     outboundQueue.length = 0;
-    for (const port of messagePorts.values()) {
+    for (const [portId, port] of messagePorts) {
+      diagnostic("debug", "port.disconnect", { ...context(), portId });
       port.close();
     }
     messagePorts.clear();
     scheduleReconnect();
   });
   socket.addEventListener("error", () => {
+    diagnostic("error", "socket.error", context());
     scheduleReconnect();
   });
 }
 
 function enqueueMessage(message: RendererToMainMessage): void {
+  queuedAt.set(message, performance.now());
   outboundQueue.push(message);
+  highWater = Math.max(highWater, outboundQueue.length);
+  diagnostic("trace", "queue.enqueue", {
+    ...message,
+    connectionId,
+    queueLength: outboundQueue.length,
+    highWater,
+  });
   ensureSocket();
   flushOutboundQueue();
 }
+
+function startRequest(requestId: string) {
+  started.set(requestId, performance.now());
+  diagnostic("debug", "request.start", {
+    requestId,
+    connectionId,
+    pending: started.size,
+  });
+}
+function settle(requestId: string, ok: boolean) {
+  diagnostic(ok ? "debug" : "warn", "request.settle", {
+    requestId,
+    connectionId,
+    ok,
+    durationMs:
+      performance.now() - (started.get(requestId) ?? performance.now()),
+  });
+  started.delete(requestId);
+}
+if (diagnosticsEnabled)
+  window.setInterval(() => {
+    let oldest = Infinity;
+    for (const time of started.values()) oldest = Math.min(oldest, time);
+    if (performance.now() - oldest > 10000)
+      diagnostic("warn", "request.slow", {
+        connectionId,
+        pending: started.size,
+        ageMs: performance.now() - oldest,
+      });
+  }, 10000);
 
 function nextRequestId(): string {
   requestCounter += 1;
@@ -297,6 +451,7 @@ function nextRequestId(): string {
 function invokeMain(channel: string, args: unknown[]): Promise<unknown> {
   const requestId = nextRequestId();
   return new Promise((resolve, reject) => {
+    startRequest(requestId);
     pendingInvokes.set(requestId, { resolve, reject });
     enqueueMessage({
       type: "ipc-renderer-invoke",
@@ -311,6 +466,7 @@ function addIpcListener(channel: string, listener: IpcListener): void {
   const listeners = rendererListeners.get(channel) ?? new Set<IpcListener>();
   listeners.add(listener);
   rendererListeners.set(channel, listeners);
+  diagnostic("debug", "ipc.listener-register", { listeners: listeners.size });
 }
 
 function shouldCloseSidebarForMemoryPath(path: string): boolean {
@@ -353,6 +509,7 @@ function requestWorkspaceDirectoryEntries(
 ): Promise<WorkspaceDirectoryEntries> {
   const requestId = nextRequestId();
   return new Promise((resolve, reject) => {
+    startRequest(requestId);
     pendingDirectoryEntries.set(requestId, { resolve, reject });
     enqueueMessage({
       type: "workspace-directory-entries-request",
@@ -405,14 +562,23 @@ const initialRoute = mapBrowserPathToInitialRoute(
   window.location.search,
 );
 electronShim.initialRoute = initialRoute.memoryPath;
+diagnostic("info", "route.initial", {
+  route: routeCategory(window.location.pathname),
+  version: __CODEX_APP_VERSION__,
+});
 
 if (initialRoute.browserPath) {
+  diagnostic("debug", "history.push");
   window.history.pushState(undefined, "", initialRoute.browserPath);
 }
 
 electronShim.initialSidebarState = initialSidebarState;
 electronShim.onMemoryNavigationChanged = (navigation) => {
   const path = navigation.location.pathname;
+  diagnostic("debug", "route.memory", {
+    action: navigation.action,
+    route: routeCategory(path),
+  });
   if (
     navigation.action !== "POP" &&
     mobileMediaQuery.matches &&
@@ -431,10 +597,12 @@ electronShim.onMemoryNavigationChanged = (navigation) => {
   }
 
   if (window.location.pathname === browserPath.path) {
+    diagnostic("debug", "history.replace");
     window.history.replaceState(undefined, "", browserPath.path);
     return;
   }
 
+  diagnostic("debug", "history.push");
   window.history.pushState(undefined, "", browserPath.path);
 };
 
@@ -509,7 +677,13 @@ export const ipcRenderer = {
 
         const portId = `message_port_${nextRequestId()}`;
         messagePorts.set(portId, transferable);
+        diagnostic("debug", "port.register", {
+          portId,
+          connectionId,
+          ports: messagePorts.size,
+        });
         transferable.addEventListener("message", (event) => {
+          diagnostic("trace", "port.receive", { portId, connectionId });
           enqueueMessage({
             type: "message-port-message",
             portId,
@@ -517,10 +691,12 @@ export const ipcRenderer = {
           });
         });
         transferable.addEventListener("messageerror", () => {
+          diagnostic("warn", "port.messageerror", { portId, connectionId });
           messagePorts.delete(portId);
           enqueueMessage({ type: "message-port-close", portId });
         });
         transferable.start();
+        diagnostic("debug", "port.start", { portId, connectionId });
         return portId;
       });
 

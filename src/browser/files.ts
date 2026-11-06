@@ -1,3 +1,4 @@
+import { diagnostic } from "./diagnostics";
 import { emitRendererEvent, isRecord } from "./shim";
 
 type CodexFetchMessage = {
@@ -38,6 +39,10 @@ function openBrowserFilePicker({
       }
       settled = true;
       cleanup();
+      diagnostic("info", "picker.complete", {
+        count: files.length,
+        ok: files.length > 0,
+      });
       resolve(files);
     }
 
@@ -95,11 +100,16 @@ async function uploadFiles(files: File[]) {
     formData.append("files", file, file.name || "upload");
   }
 
+  const began = performance.now();
   const response = await fetch(uploadUrl, {
     method: "POST",
     body: formData,
   });
 
+  diagnostic("info", "upload.response", {
+    status: response.status,
+    durationMs: performance.now() - began,
+  });
   if (!response.ok) {
     throw new Error(`Upload failed: ${response.status} ${response.statusText}`);
   }
@@ -116,7 +126,7 @@ export async function handleLocalFilePickerMessage(message: CodexFetchMessage) {
       body: response,
     });
   } catch (error) {
-    console.error(error);
+    diagnostic("error", "picker.failure");
 
     sendFetchResponse(message, {
       responseType: "error",

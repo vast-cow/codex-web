@@ -144,3 +144,5 @@ talk.
   today. i can't wait for the mobile app but judging by the other openai mobile
   apps, i'm a little bit skeptical about the quality of the mobile experience.
   time will tell.
+
+For opt-in local logging and capture instructions, see [diagnostics](docs/diagnostics.md).
