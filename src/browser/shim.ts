@@ -276,7 +276,8 @@ function flushOutboundQueue(): void {
       connectionId,
       ...message,
       ...rpcMetadata(message),
-      ageMs: performance.now() - (queuedAt.get(message) ?? performance.now()),
+      queueWaitMs:
+        performance.now() - (queuedAt.get(message) ?? performance.now()),
     };
     let encoded: string;
     try {
@@ -333,7 +334,7 @@ function ensureSocket(): void {
   const context = () => ({
     connectionId: attemptId,
     current: socket === originatingSocket,
-    durationMs: performance.now() - began,
+    connectionAgeMs: performance.now() - began,
   });
   socket.addEventListener("open", () => {
     diagnostic("info", "socket.open", context());
@@ -366,7 +367,14 @@ function ensureSocket(): void {
       ...rpcMetadata(message),
     });
     try {
+      const dispatchStart = performance.now();
       handleIncomingMessage(message);
+      diagnostic("trace", "ipc.dispatch-complete", {
+        ...context(),
+        ...message,
+        ...rpcMetadata(message),
+        dispatchMs: performance.now() - dispatchStart,
+      });
     } catch {
       diagnostic("error", "ipc.dispatch-failure", {
         ...context(),

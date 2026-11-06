@@ -155,7 +155,9 @@ class WebSocketMessagePort implements BridgedMessagePort {
     if (event === "message") {
       this.log("debug", "port.flush", {
         queueLength: this.pendingMessages.length,
-        ageMs: this.queuedSince ? performance.now() - this.queuedSince : 0,
+        queueWaitMs: this.queuedSince
+          ? performance.now() - this.queuedSince
+          : 0,
       });
       this.queuedSince = 0;
       for (const data of this.pendingMessages.splice(0)) {
@@ -572,6 +574,7 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
       diagnostic("error", "transport.serialize-failure", context);
       throw error;
     }
+    const sendStarted = performance.now();
     try {
       socket.send(encoded, (error) => {
         diagnostic(error ? "error" : "debug", "transport.dispatch-complete", {
@@ -579,6 +582,7 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
           ...message,
           ...rpcMetadata(message),
           ok: !error,
+          sendCallbackMs: performance.now() - sendStarted,
         });
       });
       diagnostic("trace", "transport.send-api", {
@@ -676,7 +680,7 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
       log("warn", "socket.close", {
         code,
         ports: messagePorts.size,
-        durationMs: performance.now() - began,
+        connectionAgeMs: performance.now() - began,
       });
       for (const port of messagePorts.values()) {
         port.disconnect();
@@ -777,7 +781,8 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
 
         if (message.type === "workspace-directory-entries-request") {
           const { requestId } = message;
-          log("debug", "handler.start", { requestId });
+          const handlerStarted = performance.now();
+          log("debug", "handler.start", { requestId, ...rpcMetadata(message) });
           getWorkspaceDirectoryEntries(message)
             .then((result) => {
               const payload: MainToRendererMessage = {
@@ -790,6 +795,8 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
                 requestId,
                 ok: payload.ok,
                 durationMs: performance.now() - received,
+                handlerExecutionMs: performance.now() - handlerStarted,
+                ...rpcMetadata(message),
               });
               send(socket, payload);
             })
@@ -804,6 +811,8 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
                 requestId,
                 ok: payload.ok,
                 durationMs: performance.now() - received,
+                handlerExecutionMs: performance.now() - handlerStarted,
+                ...rpcMetadata(message),
               });
               send(socket, payload);
             });
@@ -812,7 +821,8 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
 
         if (message.type === "ipc-renderer-invoke") {
           const { channel, requestId, args } = message;
-          log("debug", "handler.start", { requestId });
+          const handlerStarted = performance.now();
+          log("debug", "handler.start", { requestId, ...rpcMetadata(message) });
           Promise.resolve(
             bridgeState.handleRendererInvoke?.(channel, args, window.id) ??
               Promise.reject(
@@ -832,6 +842,8 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
                 requestId,
                 ok: payload.ok,
                 durationMs: performance.now() - received,
+                handlerExecutionMs: performance.now() - handlerStarted,
+                ...rpcMetadata(message),
               });
               send(socket, payload);
             })
@@ -846,6 +858,8 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
                 requestId,
                 ok: payload.ok,
                 durationMs: performance.now() - received,
+                handlerExecutionMs: performance.now() - handlerStarted,
+                ...rpcMetadata(message),
               });
               send(socket, payload);
             });

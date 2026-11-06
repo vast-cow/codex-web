@@ -25,6 +25,7 @@ const events = new Set([
   "history.push",
   "history.replace",
   "ipc.dispatch",
+  "ipc.dispatch-complete",
   "ipc.dispatch-failure",
   "ipc.listener-failure",
   "ipc.listener-register",
@@ -74,12 +75,12 @@ const events = new Set([
 // Only restore records written by this adapter; reapply the metadata allowlist.
 try {
   const saved = sessionStorage.getItem(key);
-  if (saved && saved.length <= 120000) {
+  if (saved && saved.length <= 400000) {
     const data = JSON.parse(saved);
     if (Number.isSafeInteger(data.suppressed) && data.suppressed > 0)
       priorSuppressed = data.suppressed;
     if (Array.isArray(data.records))
-      for (const record of data.records.slice(-400)) {
+      for (const record of data.records.slice(-1600)) {
         if (record && typeof record === "object")
           tail.add({
             ...metadata(record),
@@ -118,7 +119,7 @@ export function flushDiagnostics() {
 const logger = createLogger("browser", level, (record) => {
   tail.add({ ...record, sessionId, pageId });
   try {
-    console.debug(JSON.stringify(tail.records.at(-1)));
+    console.debug(JSON.stringify({ ...record, sessionId, pageId }));
   } catch {}
   if (persistTimer === undefined)
     persistTimer = window.setTimeout(() => {

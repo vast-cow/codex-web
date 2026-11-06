@@ -3,6 +3,11 @@ export type Level = "error" | "warn" | "info" | "debug" | "trace";
 const levels = ["error", "warn", "info", "debug", "trace"];
 const numeric = new Set([
   "durationMs",
+  "connectionAgeMs",
+  "queueWaitMs",
+  "sendCallbackMs",
+  "dispatchMs",
+  "handlerExecutionMs",
   "elapsedMs",
   "startMs",
   "monotonicMs",
@@ -41,6 +46,7 @@ const enums = new Set([
   "version",
   "method",
   "contentType",
+  "rpcMetadataStatus",
 ]);
 export function identity(value: unknown): string | undefined {
   return typeof value === "string" &&
@@ -56,16 +62,20 @@ export function metadata(input: Record<string, unknown>) {
     else if (flags.has(key) && typeof value === "boolean") result[key] = value;
     else if (
       key === "rpcId" &&
-      (identity(value) ||
-        (typeof value === "string" && /^\d{1,16}$/.test(value)))
+      typeof value === "string" &&
+      (/^[a-f0-9-]{36}$/.test(value) || /^\d{1,16}$/.test(value))
     )
       result[key] = value;
-    else if (ids.has(key) && identity(value)) result[key] = value;
+    else if (key !== "rpcId" && ids.has(key) && identity(value))
+      result[key] = value;
     else if (
       enums.has(key) &&
       typeof value === "string" &&
       ([
         "redacted-error",
+        "missing",
+        "invalid",
+        "recognized",
         "bootstrap-start",
         "host-services",
         "react-request",
@@ -138,7 +148,10 @@ export function createLogger(
     log(level: Level, event: string, fields: Record<string, unknown> = {}) {
       if (threshold < levels.indexOf(level)) return;
       try {
-        if (level === "trace") {
+        if (
+          level === "trace" &&
+          !criticalEvent({ event, level, ...metadata(fields) })
+        ) {
           const count = (counts.get(event) ?? 0) + 1;
           counts.set(event, count);
           if (count > 20 && count % 100 !== 0) {
@@ -207,53 +220,100 @@ export function validEnvelope(value: unknown): boolean {
       return false;
   }
 }
+// Independent bounded budgets: trace volume cannot evict critical lifecycle records.
+export function criticalEvent(record: Record<string, unknown>): boolean {
+  const event = String(record.event ?? "");
+  return (
+    record.level === "error" ||
+    record.level === "warn" ||
+    /^(startup\.phase|shim\.|route\.initial|browser\.(error|unhandled)|socket\.|reconnect\.|page\.reload|rpc\.|request\.|port\.(register|start|close|disconnect)|renderer\.)/.test(
+      event,
+    ) ||
+    typeof record.rpcId === "string"
+  );
+}
 export class DiagnosticTail {
   records: Record<string, unknown>[] = [];
   dropped = 0;
+  private entries: { critical: boolean; size: number }[] = [];
+  private counts: [number, number] = [0, 0];
+  private bytes: [number, number] = [4, 4];
   constructor(
     readonly maxCount = 400,
     readonly maxBytes = 110000,
+    readonly criticalCount = 1200,
+    readonly criticalBytes = 660000,
   ) {}
-  private bytes = 4;
-  private sizes: number[] = [];
   clear() {
     this.records.length = 0;
-    this.sizes.length = 0;
-    this.bytes = 4;
     this.dropped = 0;
+    this.entries = [];
+    this.counts = [0, 0];
+    this.bytes = [4, 4];
   }
   add(record: Record<string, unknown>) {
-    const size = JSON.stringify(record).length * 2 + 2;
+    const critical = criticalEvent(record);
+    const countLimit = critical ? this.criticalCount : this.maxCount;
+    const byteLimit = critical ? this.criticalBytes : this.maxBytes;
+    const size = (row: Record<string, unknown>) =>
+      JSON.stringify(row).length * 2 + 2;
+    if (size(record) + 4 > byteLimit) {
+      this.dropped++;
+      return;
+    }
+    const bucket = critical ? 1 : 0;
     this.records.push(record);
-    this.sizes.push(size);
-    this.bytes += size;
-    while (this.records.length > this.maxCount || this.bytes > this.maxBytes) {
-      this.records.shift();
-      this.bytes -= this.sizes.shift() ?? 0;
+    this.entries.push({ critical, size: size(record) });
+    this.counts[bucket]++;
+    this.bytes[bucket] += size(record);
+    while (this.counts[bucket] > countLimit || this.bytes[bucket] > byteLimit) {
+      const index = this.entries.findIndex((row) => row.critical === critical);
+      this.bytes[bucket] -= this.entries[index]!.size;
+      this.entries.splice(index, 1);
+      this.records.splice(index, 1);
+      this.counts[bucket]--;
       this.dropped++;
     }
   }
 }
 
-// Inspect only known envelope positions; never serialize payloads for diagnostics.
+// Only bridge payload positions and the app's request/response wrappers are inspected.
 export function rpcMetadata(message: unknown): Record<string, unknown> {
-  if (!message || typeof message !== "object") return {};
-  const m = message as Record<string, unknown>;
-  const args = Array.isArray(m.args) ? m.args : [];
-  const candidates = [m, ...args.slice(0, 2), m.data, m.message];
-  for (const candidate of candidates) {
-    if (!candidate || typeof candidate !== "object") continue;
-    const c = candidate as Record<string, unknown>;
-    const request =
-      c.request && typeof c.request === "object"
-        ? (c.request as Record<string, unknown>)
-        : c;
-    const id = request.id ?? request.requestId;
-    if (typeof id !== "string" && typeof id !== "number") continue;
-    return metadata({
-      rpcId: String(id),
-      method: request.method === "plugin/installed" ? request.method : "other",
-    });
-  }
-  return {};
+  const object = (value: unknown): Record<string, unknown> | undefined =>
+    value !== null && typeof value === "object" && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : undefined;
+  const m = object(message);
+  if (!m) return { rpcMetadataStatus: "missing" };
+  // Never inspect m.requestId: that namespace belongs to the bridge.
+  const payload =
+    m.type === "message-port-message"
+      ? object(m.data)
+      : Array.isArray(m.args)
+        ? object(m.args[0])
+        : undefined;
+  if (!payload) return { rpcMetadataStatus: "missing" };
+  const rpc =
+    object(payload.request) ??
+    object(payload.response) ??
+    (m.type === "message-port-message" && payload.jsonrpc === "2.0"
+      ? payload
+      : undefined);
+  if (!rpc) return { rpcMetadataStatus: "missing" };
+  const id = rpc.id;
+  const valid =
+    (typeof id === "string" &&
+      (/^[a-f0-9-]{36}$/.test(id) || /^\d{1,16}$/.test(id))) ||
+    (typeof id === "number" && Number.isSafeInteger(id) && id >= 0);
+  return {
+    ...metadata({
+      rpcId: valid ? String(id) : undefined,
+      method: rpc.method === "plugin/installed" ? "plugin/installed" : "other",
+    }),
+    rpcMetadataStatus: valid
+      ? "recognized"
+      : id == null
+        ? "missing"
+        : "invalid",
+  };
 }

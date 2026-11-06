@@ -320,7 +320,11 @@ test("RPC metadata keeps correlation without payloads", () => {
         }),
       ),
     ),
-    { rpcId: "42", method: "plugin/installed" },
+    {
+      rpcId: "42",
+      method: "plugin/installed",
+      rpcMetadataStatus: "recognized",
+    },
   );
   assert.doesNotMatch(
     JSON.stringify(
@@ -426,4 +430,113 @@ test("startup attempts pair Statsig durations and reject unknown phases", () => 
   assert.equal(phases[1].durationMs, 10000);
   assert.equal(phases[2].current, false);
   assert.doesNotMatch(JSON.stringify(phases), /SECRET/);
+});
+
+test("bridge IDs never substitute for inner RPC IDs", () => {
+  const uuid = crypto.randomUUID();
+  const request = {
+    type: "mcp-request",
+    request: {
+      id: uuid,
+      method: "plugin/installed",
+      params: { prompt: "SECRET" },
+    },
+  };
+  for (const envelope of [
+    { type: "ipc-renderer-invoke", requestId: "ipc_bridge_1", args: [request] },
+    {
+      type: "message-port-message",
+      portId: "message_port_ipc_bridge_1",
+      data: request,
+    },
+    {
+      type: "message-port-message",
+      data: { response: { id: uuid, result: "SECRET" } },
+    },
+    {
+      type: "ipc-main-event",
+      args: [{ type: "mcp-response", response: { id: uuid } }],
+    },
+  ]) {
+    const result = core.rpcMetadata(envelope);
+    assert.equal(result.rpcId, uuid);
+    assert.equal(result.rpcMetadataStatus, "recognized");
+    assert.doesNotMatch(JSON.stringify(result), /SECRET|ipc_bridge/);
+  }
+  for (const id of [42, 0, "123"]) {
+    assert.equal(
+      core.rpcMetadata({
+        type: "message-port-message",
+        data: { jsonrpc: "2.0", id, method: "plugin/installed" },
+      }).rpcId,
+      String(id),
+    );
+  }
+  for (const id of [undefined, null, {}, "ipc_bridge_1", "SECRET", NaN, 1.5]) {
+    const result = core.rpcMetadata({
+      requestId: "ipc_bridge_1",
+      args: [{ request: { id } }],
+    });
+    assert.equal(result.rpcId, undefined);
+    assert.match(result.rpcMetadataStatus, /missing|invalid/);
+  }
+  assert.equal(
+    core.rpcMetadata({ requestId: "ipc_bridge_1" }).rpcId,
+    undefined,
+  );
+});
+
+test("critical startup and timeout lifecycle survives trace volume, time and reload", () => {
+  const storage = new Map();
+  const b = browser(storage);
+  const id = crypto.randomUUID();
+  b.hooks.__codexWebStartupDiagnostic("bootstrap-start");
+  b.hooks.__codexWebRequestDiagnostic({
+    id,
+    method: "plugin/installed",
+    type: "registered",
+  });
+  b.hooks.__codexWebRequestDiagnostic({
+    id,
+    method: "plugin/installed",
+    type: "started",
+  });
+  b.advance(218500);
+  for (let i = 0; i < 5000; i++)
+    b.diag.diagnostic("trace", "transport.receive", { bytes: i });
+  b.hooks.__codexWebRequestDiagnostic({
+    id,
+    method: "plugin/installed",
+    type: "timed-out",
+  });
+  b.advance(31000);
+  b.hooks.__codexWebRequestDiagnostic({ id, type: "late-response" });
+  for (let i = 0; i < 5000; i++)
+    b.diag.diagnostic("debug", "startup.requests", { count: i });
+  b.diag.flushDiagnostics();
+  const reloaded = browser(storage);
+  const records = reloaded.records();
+  assert(records.some((r) => r.stage === "bootstrap-start"));
+  assert.deepEqual(
+    records.filter((r) => r.rpcId === id).map((r) => r.stage),
+    ["registered", "started", "timed-out", "late-response"],
+  );
+  assert(records.some((r) => r.pageId === b.diag.pageId));
+  const exported = JSON.parse(b.window.codexWebDiagnostics.export());
+  assert(exported.dropped > 0);
+  assert(exported.suppressed > 0);
+});
+
+test("priority budgets stay bounded and preserve insertion ordering", () => {
+  const tail = new core.DiagnosticTail(2, 10000, 3, 10000);
+  for (let i = 0; i < 20; i++) {
+    tail.add({ event: "rpc.lifecycle", sequence: i * 2 });
+    tail.add({ event: "traffic", sequence: i * 2 + 1 });
+  }
+  assert.equal(tail.records.length, 5);
+  assert.equal(tail.dropped, 35);
+  assert.deepEqual(
+    Array.from(tail.records, (r) => r.sequence),
+    [34, 36, 37, 38, 39],
+  );
 });

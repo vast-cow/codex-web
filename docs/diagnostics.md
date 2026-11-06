@@ -34,11 +34,18 @@ Paste the returned JSON into a local file. Other browsers can evaluate
 `window.codexWebDiagnostics.export()` and copy the returned string. No data is
 uploaded. Clear removes the in-memory and persisted tail, not console history.
 
-The buffer holds at most 400 records and 110,000 bytes measured conservatively as
-twice the serialized character count. Persistence is batched every two seconds
+The buffer has independent budgets: 1,200 critical records / 660,000 bytes and
+400 ordinary records / 110,000 bytes, measured conservatively as twice the
+serialized character count. Critical events include startup phases, initialization,
+socket/reconnect/reload, RPC and bridge request lifecycles, port registration and
+closure, renderer events, warnings/errors, and RPC-correlated transport boundaries.
+Ordinary traffic cannot evict critical records. Each budget evicts its oldest
+records when full; there is no time expiry or guarantee under unlimited critical
+traffic. Export order remains insertion order, including after restoration. Persistence is batched every two seconds
 and flushed before intentional reload and on pagehide. `dropped` counts evicted
 records; `suppressed` counts sampled trace records. For each trace event, the first
-20 occurrences and every hundredth occurrence are retained. Application queues
+20 occurrences and every hundredth occurrence are retained for ordinary trace
+events. Critical events are never sampled. Application queues
 are never bounded, retried, or dropped by the logger. Slow warnings report the
 oldest pending request every ten seconds after ten seconds; they never settle it.
 Storage and sink errors are swallowed; blocked or full storage can prevent tail
@@ -56,7 +63,8 @@ webContents IDs. Metadata in the WebSocket handshake is bounded and validated;
 it is diagnostic context, not authentication. No Electron or app-host payloads
 are changed.
 
-Durations use each runtime's monotonic clock. Do not subtract browser and server
+Durations use each runtime's monotonic clock. Never subtract independent browser
+and server monotonic timestamps. Do not subtract browser and server
 wall times. `transport.send-api` means only that send returned; the peer's
 `transport.receive` or `ipc.dispatch` provides evidence of receipt. On the server,
 receipt is logged before waiting for renderer readiness; dispatch afterward
@@ -161,7 +169,11 @@ The hook never records result, error text, parameters, or conversation IDs.
 Only UUIDs and bounded numeric IDs are retained. `method` currently identifies
 `plugin/installed`; other methods are grouped as `other` to prevent arbitrary
 method text from entering captures. Known envelope positions carry this context
-through queueing, transport and server dispatch. Unrecognized envelopes omit it.
+through queueing, transport and server dispatch. Unrecognized envelopes omit the RPC ID. `rpcMetadataStatus` explicitly reports
+`recognized`, `missing`, or `invalid`. Extraction reads only `args[0].request` /
+`args[0].response` (the upstream mcp-request/mcp-response messages), the equivalent
+MessagePort `data.request` / `data.response`, or raw JSON-RPC 2.0 MessagePort data.
+No recursive search or fallback to an outer `requestId` occurs.
 Use browser page/session IDs and the connection's renderer association when
 joining application lifecycle events with transport records.
 
@@ -193,3 +205,66 @@ or browser delay.
 
 For startup phase measurements, the current investigation findings, and a Chrome
 Performance recording procedure, see [startup performance](startup-performance.md).
+
+
+## Timing fields and complete request exports
+
+- `connectionAgeMs`: time since this socket attempt began, including on receipt;
+  this is not request latency.
+- `queueWaitMs`: local outbound queue wait or server MessagePort queue age.
+- `durationMs`: event-specific local interval: renderer initialization/readiness,
+  HTTP handling, server handler completion (measured from receipt, including
+  readiness waiting), or browser bridge Promise settlement since request start.
+- `handlerExecutionMs`: server handler invocation through asynchronous completion,
+  excluding renderer readiness wait; includes any I/O awaited by that handler.
+- `sendCallbackMs`: server WebSocket send invocation through callback completion;
+  this is local write completion, not browser receipt.
+- `dispatchMs`: synchronous browser incoming dispatch execution time, after decode.
+- `elapsedMs` on startup phases: navigation-relative browser time.
+- `ageMs` on `request.slow`: age of the oldest pending bridge request.
+- `monotonicMs`: local record creation time. `timestamp` is wall time for approximate
+  alignment only. Sequence numbers are local to a runtime/page; retain `pageId`
+  when ordering restored records. Export array order preserves capture order.
+
+`requestId` belongs exclusively to the bridge; `rpcId` belongs to the application.
+Join transport records by `(connectionId, requestId)` or `(connectionId, portId)`,
+and application records by `(pageId, rpcId)`. Use records carrying both identifiers
+and the server renderer association to connect these namespaces. Application hook
+records have page identity; they need not have a bridge request or connection ID.
+Numeric RPC IDs are normalized to strings. UUID RPC IDs remain unchanged. Response
+records may classify the method as `other` when the method is absent: join to the
+registration record to recover its classification without caching payloads.
+
+To export a failed lifecycle:
+
+1. Enable trace diagnostics in both runtimes before reloading, and capture server
+   stderr continuously through startup, timeout, late response and recovery.
+2. Export the browser JSON after failure/recovery. Preserve `records`, `dropped`
+   and `suppressed` separately. Storage failures do not stop in-memory capture,
+   but prevent persistence across reloads. Export before closing the tab.
+3. Find the `plugin/installed` registration and collect every record with its
+   `(pageId, rpcId)`. Follow connection/port/bridge associations into server logs.
+4. Include startup, renderer, socket, disconnect and reload records around the
+   request, even if they lack `rpcId`. Nonzero dropped counts mean the export may
+   be incomplete; suppressed counts describe sampled ordinary traces separately.
+
+Synthetic sanitized correlation example (symbolic IDs shortened for readability;
+real exports retain full validated UUIDs):
+
+```text
+browser page=P1 rpc.lifecycle rpc=R1 method=plugin/installed stage=registered
+browser page=P1 rpc.lifecycle rpc=R1 method=plugin/installed stage=started
+browser page=P1 connection=C1 queue.enqueue request=ipc_bridge_1 rpc=R1
+browser page=P1 connection=C1 transport.send-api request=ipc_bridge_1 rpc=R1 queueWaitMs=0.2
+server  page=P1 connection=C1 server=S1 ipc.dispatch request=ipc_bridge_1 rpc=R1
+browser page=P1 rpc.lifecycle rpc=R1 method=plugin/installed stage=timed-out
+server  page=P1 connection=C1 server=S1 response.route rpc=R1
+server  page=P1 connection=C1 server=S1 transport.dispatch-complete rpc=R1 sendCallbackMs=0.4
+browser page=P1 connection=C1 transport.receive rpc=R1 connectionAgeMs=249600
+browser page=P1 rpc.lifecycle rpc=R1 method=other stage=late-response
+browser page=P1 connection=C1 ipc.dispatch-complete rpc=R1 dispatchMs=0.3
+```
+
+This is a synthetic event model example, not evidence that the production timeout
+is fixed. The tests simulate transport and elapsed time; a live browser capture is
+still required to explain the observed startup and timeout delays.
