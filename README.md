@@ -18,68 +18,70 @@ device with a browser.
 this project aims to be as thin a wrapper as possible to ensure upstream changes
 to the codex desktop app can be integrated quickly.
 
-## usage
+## Prerequisites
 
-`codex-web` serves the browser client and hosts the desktop-side bridge. by
-default, it listens on `127.0.0.1:8214`.
+- Node.js 22.12+ and npm (Vite requires Node 20.19+ or 22.12+).
+- Git, Bash, curl, unzip, and patch on the host. Native dependencies may
+  require a compiler toolchain and Python if prebuilt binaries are unavailable.
+- Codex CLI installed on the host and available as `codex` on `PATH`.
+  Sign in before starting the server:
 
-it will use `codex` from `PATH` if available, or `CODEX_CLI_PATH` if you set
-it.
+  ```bash
+  codex login --device-auth
+  ```
 
-run it with `npx`:
+## Clone and install
 
-```bash
-npx --yes github:0xcaff/codex-web
-```
-
-or with nix:
-
-```bash
-nix run github:0xcaff/codex-web
-```
-
-then open <http://127.0.0.1:8214> in a browser.
-
-### sign in
-
-ensure the codex cli on the host machine is signed in before starting the
-server.
+Source installation is the standard setup:
 
 ```bash
-codex login --device-auth
+git clone https://github.com/vast-cow/codex-web.git
+cd codex-web
+npm ci
 ```
 
-### proxying to app-server (advanced usage)
+`npm ci` runs the preparation scripts: they download the required Codex Desktop
+archive, extract and patch its assets, then build the browser bridge and server.
+Internet access is required; do not disable npm lifecycle scripts.
 
-it’s often useful to run the app server separately, so a crash or restart of
-codex-web doesn’t interrupt the codex process executing commands.
-
-it's possible to hook codex-web up to an already-running app server using the
-`codex_remote_proxy` script.
-
-start a long-lived app server somewhere:
+## Run locally
 
 ```bash
-mkdir -p /tmp/codex-app-server
-cd /tmp/codex-app-server
-codex app-server --listen unix://codex-app-server.sock
+npm run server
 ```
 
-then run `codex-web` with the proxy helper:
+Open <http://127.0.0.1:8214>. This serves the built application and backend,
+bound to loopback by default. The command rebuilds the server and browser bridge
+before launching.
+
+## Local development
+
+Run `npm run server` in one terminal and `npm run dev:browser` in another.
+Open <http://127.0.0.1:4173> for the Vite development frontend.
+See [local development](docs/local-development.md) for editable source paths,
+rebuilds, and the difference between the two ports.
+
+## Tailscale remote access
+
+With both processes running and devices on the same trusted tailnet:
 
 ```bash
-nix shell github:0xcaff/codex-web github:0xcaff/codex-web#codex_remote_proxy -c bash -lc '
-  export CODEX_UNIX_SOCKET=/tmp/codex-app-server/codex-app-server.sock
-  export CODEX_CLI_PATH="$(command -v codex_remote_proxy)"
-  codex-web
-'
+tailscale serve --https=4173 http://127.0.0.1:4173
 ```
 
-`codex app-server proxy --sock ...` is a raw stdio protocol bridge for another
-program to use; when run directly in a terminal it will wait for protocol input
-rather than opening an interactive prompt.
+Open the HTTPS URL printed by Serve, such as
+`https://example.tailnet.ts.net:4173`. Only the frontend needs Serve; Vite proxies
+backend traffic. See [Tailscale setup and hostname configuration](docs/local-development.md#tailscale-serve).
 
-## security
+## Troubleshooting
+
+For blocked hostnames, failed preparation, or stale changes, see
+[troubleshooting](docs/local-development.md#troubleshooting).
+[Diagnostics](docs/diagnostics.md) describes opt-in logging and capture.
+[Separate app-server operation](docs/app-server-proxy.md) covers the advanced
+proxy workflow, including its optional Nix environment.
+
+## Security considerations
 
 run `codex-web` only on trusted networks. treat anyone who can reach the
 `codex-web` server as someone who can operate codex on the host machine as the
@@ -98,6 +100,12 @@ someone with access to the web ui may be able to:
 - use the codex / chatgpt account already signed in on the host. this may
   consume usage quota or billing credits, and may expose account metadata shown
   by the app or cli, such as name or email address.
+
+Keep the backend bound to `127.0.0.1`. Use Tailscale Serve for private access
+within a trusted tailnet, with tailnet access rules restricted to trusted users.
+Do not expose this application publicly with Tailscale Funnel.
+Vite's `allowedHosts` is not authentication or authorization; prefer explicitly
+allowed hostnames over `allowedHosts: true`.
 
 ## features
 
@@ -133,14 +141,14 @@ talk.
 
 ## alternatives
 
-* [davej/pocodex](https://github.com/davej/pocodex) i used this until the wheels fell off. i needed subagents
+- [davej/pocodex](https://github.com/davej/pocodex) i used this until the wheels fell off. i needed subagents
   and an inline image viewer. this didn't have them and was having a hard time
   keeping up with upstream codex updates.
-* the native codex remote feature (behind a feature flag) is great for
+- the native codex remote feature (behind a feature flag) is great for
   connecting to remote codex hosts over ssh to manage long running tasks but
   this only works if you have codex desktop on your client device. this means it
   doesn't work on mobile.
-* upcoming first party mobile app from openai. `codex-web` exists and works
+- upcoming first party mobile app from openai. `codex-web` exists and works
   today. i can't wait for the mobile app but judging by the other openai mobile
   apps, i'm a little bit skeptical about the quality of the mobile experience.
   time will tell.
