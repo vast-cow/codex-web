@@ -589,6 +589,10 @@ class BrowserWindow {
   destroy(): void {
     log(`BrowserWindow#${this.id}.destroy`, []);
     if (this.destroyed) return;
+    diagnostic("debug", "renderer.destroy", {
+      windowId: this.id,
+      webContentsId: this.webContents.id,
+    });
     this.destroyed = true;
     (this.webContents.emit as StubFunction)("destroyed");
     BrowserWindow.allWindows = BrowserWindow.allWindows.filter(

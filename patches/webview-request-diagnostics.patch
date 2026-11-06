@@ -1,0 +1,34 @@
+--- a/webview/assets/app-shared-8bd9d0399038.js
++++ b/webview/assets/app-shared-8bd9d0399038.js
+@@ -174312,6 +174312,7 @@
+           }
+         }
+         onResult(e, t, n) {
++          globalThis.__codexWebRequestDiagnostic?.({id:e, type:this.requestPromises.has(e)?"response":"late-response"});
+           let r = this.requestPromises.get(e);
+           if (r) {
+             let i = Date.now();
+@@ -174360,6 +174361,7 @@
+               }));
+         }
+         onError(e, t, n) {
++          globalThis.__codexWebRequestDiagnostic?.({id:e, type:this.requestPromises.has(e)?"rejection":"late-response", method:this.requestPromises.get(e)?.method, timeout:t?.name === "TimeoutError", cancelled:t?.name === "AbortError"});
+           let r = this.requestPromises.get(e);
+           if (r) {
+             let i = Date.now();
+@@ -174630,6 +174632,7 @@
+                 queuedRequestCountAtEnqueue: this.queuedRequests.length,
+               };
+               (this.requestPromises.set(i, c),
++                globalThis.__codexWebRequestDiagnostic?.({id:i, method:e, type:"registered"}),
+                 r != null && this.pendingConfigReadRequests.set(r, c));
+             });
+           return (
+@@ -174939,6 +174942,7 @@
+             }));
+         }
+         emitRequestLifecycleEvent(e) {
++          globalThis.__codexWebRequestDiagnostic?.(e);
+           for (let t of this.requestLifecycleListeners)
+             try {
+               t(e);

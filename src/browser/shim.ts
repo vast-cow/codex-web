@@ -5,7 +5,11 @@ import {
   sessionId,
   pageId,
 } from "./diagnostics";
-import { validEnvelope, routeCategory } from "../server/diagnostics/core";
+import {
+  rpcMetadata,
+  validEnvelope,
+  routeCategory,
+} from "../server/diagnostics/core";
 import {
   mapBrowserPathToInitialRoute,
   mapMemoryPathToBrowserPath,
@@ -271,6 +275,7 @@ function flushOutboundQueue(): void {
     const fields = {
       connectionId,
       ...message,
+      ...rpcMetadata(message),
       ageMs: performance.now() - (queuedAt.get(message) ?? performance.now()),
     };
     let encoded: string;
@@ -355,11 +360,19 @@ function ensureSocket(): void {
       diagnostic("warn", "transport.invalid-envelope", context());
       return;
     }
-    diagnostic("trace", "transport.receive", { ...context(), ...message });
+    diagnostic("trace", "transport.receive", {
+      ...context(),
+      ...message,
+      ...rpcMetadata(message),
+    });
     try {
       handleIncomingMessage(message);
     } catch {
-      diagnostic("error", "ipc.dispatch-failure", { ...context(), ...message });
+      diagnostic("error", "ipc.dispatch-failure", {
+        ...context(),
+        ...message,
+        ...rpcMetadata(message),
+      });
     }
   });
   socket.addEventListener("close", (event) => {
@@ -405,6 +418,7 @@ function enqueueMessage(message: RendererToMainMessage): void {
   highWater = Math.max(highWater, outboundQueue.length);
   diagnostic("trace", "queue.enqueue", {
     ...message,
+    ...rpcMetadata(message),
     connectionId,
     queueLength: outboundQueue.length,
     highWater,

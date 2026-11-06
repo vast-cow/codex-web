@@ -3,6 +3,8 @@ export type Level = "error" | "warn" | "info" | "debug" | "trace";
 const levels = ["error", "warn", "info", "debug", "trace"];
 const numeric = new Set([
   "durationMs",
+  "monotonicMs",
+  "eventLoopDelayMs",
   "ageMs",
   "queueLength",
   "highWater",
@@ -26,6 +28,7 @@ const ids = new Set([
   "connectionId",
   "serverId",
   "requestId",
+  "rpcId",
   "portId",
 ]);
 const enums = new Set([
@@ -49,12 +52,29 @@ export function metadata(input: Record<string, unknown>) {
     if (numeric.has(key) && typeof value === "number" && Number.isFinite(value))
       result[key] = value;
     else if (flags.has(key) && typeof value === "boolean") result[key] = value;
+    else if (
+      key === "rpcId" &&
+      (identity(value) ||
+        (typeof value === "string" && /^\d{1,16}$/.test(value)))
+    )
+      result[key] = value;
     else if (ids.has(key) && identity(value)) result[key] = value;
     else if (
       enums.has(key) &&
       typeof value === "string" &&
       ([
         "redacted-error",
+        "plugin/installed",
+        "registered",
+        "completed",
+        "failed",
+        "late-response",
+        "started",
+        "timeout",
+        "timed-out",
+        "response",
+        "rejection",
+        "cancelled",
         "reconnect",
         "home",
         "thread",
@@ -120,6 +140,7 @@ export function createLogger(
         }
         sink({
           timestamp: new Date().toISOString(),
+          monotonicMs: performance.now(),
           source,
           level,
           event,
@@ -204,4 +225,27 @@ export class DiagnosticTail {
       this.dropped++;
     }
   }
+}
+
+// Inspect only known envelope positions; never serialize payloads for diagnostics.
+export function rpcMetadata(message: unknown): Record<string, unknown> {
+  if (!message || typeof message !== "object") return {};
+  const m = message as Record<string, unknown>;
+  const args = Array.isArray(m.args) ? m.args : [];
+  const candidates = [m, ...args.slice(0, 2), m.data, m.message];
+  for (const candidate of candidates) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const c = candidate as Record<string, unknown>;
+    const request =
+      c.request && typeof c.request === "object"
+        ? (c.request as Record<string, unknown>)
+        : c;
+    const id = request.id ?? request.requestId;
+    if (typeof id !== "string" && typeof id !== "number") continue;
+    return metadata({
+      rpcId: String(id),
+      method: request.method === "plugin/installed" ? request.method : "other",
+    });
+  }
+  return {};
 }

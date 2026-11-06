@@ -143,3 +143,50 @@ With both loggers enabled, check:
 7. At trace level, exercise app-host RPC: port registration, listener flush,
    traffic and disconnect; use a throwing test listener and malformed JSON only
    in an isolated development session to compare failure stages.
+
+## Application RPC lifecycle tracing
+
+Enable both loggers at `trace` using the commands above, rebuild prepared assets
+with the request diagnostics patch, and reload the browser. Export the browser
+buffer and retain server stderr. No timeout settings change.
+
+`rpc.lifecycle` (debug, unsampled) observes the upstream request client's actual
+Promise registration (`registered`), lifecycle events (`started`, `completed`,
+`failed`, `timed-out`, `cancelled`), and response lookup (`response`, `rejection`,
+`late-response`). The optional global hook is installed by the browser shim; the
+upstream patch does nothing in desktop Electron when that hook is absent.
+The hook never records result, error text, parameters, or conversation IDs.
+
+`rpcId` identifies application requests separately from bridge `requestId`.
+Only UUIDs and bounded numeric IDs are retained. `method` currently identifies
+`plugin/installed`; other methods are grouped as `other` to prevent arbitrary
+method text from entering captures. Known envelope positions carry this context
+through queueing, transport and server dispatch. Unrecognized envelopes omit it.
+Use browser page/session IDs and the connection's renderer association when
+joining application lifecycle events with transport records.
+
+`response.route` records server routing intent, including missing renderer
+associations. `renderer.destroy` marks window destruction. `reply.skipped` and
+`reply.target-missing` identify replies without a live transport target.
+`transport.dispatch-complete` reports the WebSocket send callback's success or
+failure; success is local write completion, not browser acknowledgement.
+`transport.send-api` still means send returned. Transport records at trace level
+are sampled; absence of a sampled event is not proof that dispatch failed.
+
+Every new record includes runtime-local `monotonicMs` as well as wall time.
+Compare server receipt/handler/route/write durations within the server and
+browser registration/send/receive/settlement within the browser. Cross-runtime
+wall times require synchronized clocks and cannot establish one-way latency.
+`browser.event-loop` reports timer lateness above 100 ms (one-second probe only
+when diagnostics are enabled). Background timer throttling and suspension also
+cause lateness; it is supporting evidence, not proof of a blocked event loop.
+
+Confirmed during source inspection: the upstream timeout path deletes its Promise
+entry, clears its timeout and rejects it; a later result consequently has no
+Promise to resolve. Existing bridge-only diagnostics did not observe this map.
+This explains how a timeout can precede a correlation warning, but does not
+establish the cause of the reported plugin timeout. Reconnect still rejects
+bridge requests and reloads; application cancellation/cleanup events and late
+responses can be compared across retained page records. No broad IPC fix is
+included. A live reproduction remains necessary to attribute transport, server,
+or browser delay.

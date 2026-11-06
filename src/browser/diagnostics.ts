@@ -49,6 +49,8 @@ const events = new Set([
   "request.settle",
   "request.slow",
   "request.start",
+  "rpc.lifecycle",
+  "browser.event-loop",
   "request.unknown",
   "resource.error",
   "route.initial",
@@ -172,3 +174,31 @@ for (const event of ["online", "offline", "visibilitychange", "pagehide"]) {
   );
 }
 diagnostic("info", "shim.initialize");
+
+// Optional upstream hook: absent in desktop Electron; diagnostics never throw.
+Object.assign(globalThis, {
+  __codexWebRequestDiagnostic(event: Record<string, unknown>) {
+    try {
+      diagnostic("debug", "rpc.lifecycle", {
+        rpcId: String(event.id),
+        method: event.method === "plugin/installed" ? event.method : "other",
+        stage: event.timeout
+          ? "timeout"
+          : event.cancelled
+            ? "cancelled"
+            : event.type,
+      });
+    } catch {}
+  },
+});
+if (diagnosticsEnabled) {
+  let expected = performance.now() + 1000;
+  window.setInterval(() => {
+    const now = performance.now();
+    if (now - expected > 100)
+      diagnostic("debug", "browser.event-loop", {
+        eventLoopDelayMs: now - expected,
+      });
+    expected = now + 1000;
+  }, 1000);
+}

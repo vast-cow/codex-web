@@ -15,6 +15,7 @@ function load(file, context, imports = {}) {
   vm.runInNewContext(
     js,
     {
+      performance,
       ...context,
       exports,
       require: (id) => {
@@ -193,7 +194,7 @@ test("decode versus listener failure, unknown IDs, slow observation and disconne
   });
   const request = b.shim.ipcRenderer.invoke("test");
   b.advance(11000);
-  b.timers[1]();
+  for (const timer of [...b.timers]) timer();
   assert(b.records().some((r) => r.event === "request.slow"));
   assert(b.records().some((r) => r.event === "transport.decode-failure"));
   assert(b.records().some((r) => r.event === "ipc.listener-failure"));
@@ -298,4 +299,115 @@ test("oversized tail record is evicted without affecting future records", () => 
   assert.equal(tail.records.length, 1);
   tail.clear();
   assert.equal(tail.dropped, 0);
+});
+
+test("RPC metadata keeps correlation without payloads", () => {
+  assert.deepEqual(
+    JSON.parse(
+      JSON.stringify(
+        core.rpcMetadata({
+          args: [
+            {
+              request: {
+                id: 42,
+                method: "plugin/installed",
+                params: { secret: "SECRET" },
+              },
+            },
+          ],
+        }),
+      ),
+    ),
+    { rpcId: "42", method: "plugin/installed" },
+  );
+  assert.doesNotMatch(
+    JSON.stringify(
+      core.rpcMetadata({ data: { id: "private prompt", method: "SECRET" } }),
+    ),
+    /SECRET|private/,
+  );
+});
+
+test("upstream result cleanup and late response hook preserve settlement", () => {
+  const patch = fs.readFileSync(
+    "patches/webview-request-diagnostics.patch",
+    "utf8",
+  );
+  const asset = "scratch/asar/webview/assets/app-shared-8bd9d0399038.js";
+  assert(fs.existsSync(asset), "prepared upstream asset is required");
+  const source = fs.readFileSync(asset, "utf8");
+  const start = source.indexOf("onResult(e, t, n) {");
+  const end = source.indexOf("onError(e, t, n) {", start);
+  const events = [];
+  const client = vm.runInNewContext(
+    "({" + source.slice(start, end).trim() + "})",
+    {
+      globalThis: { __codexWebRequestDiagnostic: (e) => events.push(e) },
+      Date,
+      zf: { debug() {}, error() {} },
+      l6() {},
+      rpn() {
+        return {};
+      },
+    },
+  );
+  const timeoutStart = source.indexOf("onTimeout(e) {");
+  const timeoutEnd = source.indexOf("clearRequestTimeout(e) {", timeoutStart);
+  const timeoutClient = vm.runInNewContext(
+    "({" + source.slice(timeoutStart, timeoutEnd).trim() + "})",
+    {
+      Date,
+      Error,
+      zf: { warning() {} },
+      l6() {},
+      rpn() {
+        return {};
+      },
+    },
+  );
+  let rejected = 0;
+  timeoutClient.requestPromises = new Map([
+    [
+      "43",
+      {
+        method: "plugin/installed",
+        reject() {
+          rejected++;
+        },
+      },
+    ],
+  ]);
+  timeoutClient.clearRequestTimeout = () => {};
+  timeoutClient.releaseRequestCapacity = () => {};
+  timeoutClient.emitRequestLifecycleEvent = (e) => events.push(e);
+  timeoutClient.onTimeout("43");
+  assert.equal(rejected, 1);
+  assert.equal(timeoutClient.requestPromises.size, 0);
+  assert.equal(events.at(-1).type, "timed-out");
+  timeoutClient.onTimeout("43");
+  assert.equal(rejected, 1);
+  let resolved = 0,
+    cleared = 0;
+  client.requestPromises = new Map([
+    [
+      "42",
+      {
+        resolve() {
+          resolved++;
+        },
+        method: "plugin/installed",
+        queuedAtMs: 0,
+      },
+    ],
+  ]);
+  client.clearRequestTimeout = () => cleared++;
+  client.releaseRequestCapacity = () => {};
+  client.emitRequestLifecycleEvent = () => {};
+  client.onResult("42", {}, null);
+  assert.equal(client.requestPromises.size, 0);
+  assert.equal(cleared, 1);
+  client.onResult("42", {}, null);
+  assert.equal(resolved, 1);
+  assert.equal(events.at(-1).type, "late-response");
+  assert.match(patch, /requestPromises\.set/);
 });

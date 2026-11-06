@@ -7,7 +7,12 @@ declare global {
 }
 
 import { diagnostic, serverId } from "./diagnostics";
-import { identity, validEnvelope, routeCategory } from "./diagnostics/core";
+import {
+  identity,
+  rpcMetadata,
+  validEnvelope,
+  routeCategory,
+} from "./diagnostics/core";
 import { errorMonitor } from "node:events";
 import { execFileSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -568,10 +573,18 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
       throw error;
     }
     try {
-      socket.send(encoded);
+      socket.send(encoded, (error) => {
+        diagnostic(error ? "error" : "debug", "transport.dispatch-complete", {
+          ...context,
+          ...message,
+          ...rpcMetadata(message),
+          ok: !error,
+        });
+      });
       diagnostic("trace", "transport.send-api", {
         ...context,
         ...message,
+        ...rpcMetadata(message),
         bytes: encoded.length,
         bufferedAmount: socket.bufferedAmount,
       });
@@ -582,6 +595,12 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
   }
   bridgeState.sendToRenderer = (webContentsId, message): void => {
     const socket = rendererSockets.get(webContentsId);
+    diagnostic("debug", "response.route", {
+      ...(socket ? socketContexts.get(socket) : {}),
+      webContentsId,
+      ...message,
+      ...rpcMetadata(message),
+    });
     if (!socket)
       diagnostic("warn", "reply.target-missing", { webContentsId, ...message });
     send(socket, message);
@@ -690,7 +709,7 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
         log("warn", "transport.invalid-envelope");
         return;
       }
-      log("trace", "ipc.dispatch", { ...message });
+      log("trace", "ipc.dispatch", { ...message, ...rpcMetadata(message) });
       try {
         if (message.type === "ipc-renderer-send") {
           bridgeState.handleRendererSend?.(
@@ -832,7 +851,10 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
             });
         }
       } catch (error) {
-        log("error", "ipc.dispatch-failure", { ...message });
+        log("error", "ipc.dispatch-failure", {
+          ...message,
+          ...rpcMetadata(message),
+        });
         throw error;
       }
     });
