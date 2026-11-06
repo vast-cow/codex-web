@@ -97,6 +97,7 @@ backend traffic. See [Tailscale setup and hostname configuration](docs/local-dev
 For blocked hostnames, failed preparation, or stale changes, see
 [troubleshooting](docs/local-development.md#troubleshooting).
 [Diagnostics](docs/diagnostics.md) describes opt-in logging and capture.
+[Static asset delivery](docs/static-assets.md) covers caching and startup measurements.
 [Separate app-server operation](docs/app-server-proxy.md) covers the advanced
 proxy workflow, including its optional Nix environment.
 

@@ -1,4 +1,6 @@
 import type { FastifyInstance } from "fastify";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import fastifyStatic from "@fastify/static";
 import { routeCategory } from "./diagnostics/core";
 
@@ -15,6 +17,19 @@ export async function registerStaticRoutes(
   root: string,
   diagnostic: Diagnostic,
 ): Promise<void> {
+  // Missing metadata conservatively revalidates (e.g. an unbuilt checkout).
+  const immutableAssets = new Set<string>();
+  try {
+    const entries: unknown = JSON.parse(
+      await readFile(path.join(root, ".immutable-assets.json"), "utf8"),
+    );
+    if (Array.isArray(entries))
+      for (const entry of entries) {
+        if (typeof entry === "string") immutableAssets.add(entry);
+      }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
   const starts = new WeakMap<object, number>();
   const fallbacks = new WeakSet<object>();
   app.addHook("onRequest", async (request) => {
@@ -53,8 +68,28 @@ export async function registerStaticRoutes(
     root: "/",
     prefix: "/@fs/",
     decorateReply: false,
+    cacheControl: false,
+    setHeaders(response) {
+      response.setHeader("Cache-Control", "no-cache");
+    },
   });
-  await app.register(fastifyStatic, { root, prefix: "/" });
+  await app.register(fastifyStatic, {
+    root,
+    prefix: "/",
+    preCompressed: true,
+    cacheControl: false,
+    setHeaders(response, file) {
+      const relative = path.relative(root, file).split(path.sep).join("/");
+      const immutable = immutableAssets.has(
+        relative.replace(/\.(?:br|gz)$/, ""),
+      );
+      response.setHeader(
+        "Cache-Control",
+        immutable ? "public, max-age=31536000, immutable" : "no-cache",
+      );
+      response.setHeader("Vary", "Accept-Encoding");
+    },
+  });
   app.get("/", async (_request, reply) => reply.sendFile("index.html"));
   app.setNotFoundHandler((request, reply) => {
     const path = pathname(request.url);
