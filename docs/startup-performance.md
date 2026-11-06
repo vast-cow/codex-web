@@ -1,5 +1,8 @@
 # Browser startup investigation
 
+For the consolidated Task 3 timing model, evidence limits and reproduction
+contract, see [startup and RPC investigation](startup-rpc-investigation.md).
+
 ## Evidence from the available capture
 
 The local `npm-run-server-003.txt` contains two slow loads, including a route

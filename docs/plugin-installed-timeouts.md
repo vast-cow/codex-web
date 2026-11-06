@@ -1,5 +1,8 @@
 # Installed plugin timeout investigation
 
+For the consolidated Task 3 timing model, evidence limits and reproduction
+contract, see [startup and RPC investigation](startup-rpc-investigation.md).
+
 The available evidence does not establish the cause of the delay. No runtime fix
 is justified yet. Plugin discovery and the 30-second timeout remain unchanged.
 
