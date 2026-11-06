@@ -117,6 +117,7 @@ object (replace an existing local setting instead of adding a duplicate key):
 server: {
   host: "127.0.0.1",
   port: 4173,
+  strictPort: true,
   allowedHosts: ["example.tailnet.ts.net"],
   proxy: {
     "/__backend/ipc": {
@@ -159,9 +160,12 @@ after changing its configuration and preserve both proxy routes above.
   `CODEX_CLI_PATH` instead.
 - **Changes do not appear:** use 4173 for Vite, rebuild/restart server TypeScript,
   or rebuild the browser bridge and reload 8214 for the built application.
-- **Port conflict:** free ports 8214 and 4173; check Vite's startup output because
-  it can choose a different port if 4173 is occupied. Serve must target the
-  actual Vite port.
+- **Port conflict:** Vite fails with `Port 4173 is already in use` instead of
+  silently choosing another port. Stop the conflicting process and restart.
+  An intentional override (`npm run dev:browser -- --port 4175`) must also
+  update the reverse proxy target. The external HTTPS listener may use a
+  different port; keep its target pointed at the chosen local Vite port.
+  The backend independently needs port 8214.
 - **Remote page or uploads fail:** check both processes, Serve's printed URL,
   tailnet permissions, hostname rules, and the two Vite proxy routes. Restart
   Vite after config edits. Do not expose 8214 publicly to work around a proxy
