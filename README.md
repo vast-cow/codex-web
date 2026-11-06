@@ -51,8 +51,26 @@ npm run server
 ```
 
 Open <http://127.0.0.1:8214>. This serves the built application and backend,
-bound to loopback by default. The command rebuilds the server and browser bridge
+bound to loopback by default. The command rebuilds the server and browser frontend
 before launching.
+
+### Built mode
+
+To serve the backend and built frontend together on port 4173:
+
+```bash
+# Build the frontend
+npm run build:browser
+
+# Build the backend
+npm run build:server
+
+# Serve the backend and built frontend
+npm run server -- --port 4173
+```
+
+Open <http://127.0.0.1:4173>. No Vite development server is needed.
+`npm run server` also rebuilds both components through its `preserver` hook.
 
 ## Local development
 
