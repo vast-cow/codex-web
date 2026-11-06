@@ -190,3 +190,6 @@ bridge requests and reloads; application cancellation/cleanup events and late
 responses can be compared across retained page records. No broad IPC fix is
 included. A live reproduction remains necessary to attribute transport, server,
 or browser delay.
+
+For startup phase measurements, the current investigation findings, and a Chrome
+Performance recording procedure, see [startup performance](startup-performance.md).

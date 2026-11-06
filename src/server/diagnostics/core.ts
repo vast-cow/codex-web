@@ -3,6 +3,8 @@ export type Level = "error" | "warn" | "info" | "debug" | "trace";
 const levels = ["error", "warn", "info", "debug", "trace"];
 const numeric = new Set([
   "durationMs",
+  "elapsedMs",
+  "startMs",
   "monotonicMs",
   "eventLoopDelayMs",
   "ageMs",
@@ -64,6 +66,12 @@ export function metadata(input: Record<string, unknown>) {
       typeof value === "string" &&
       ([
         "redacted-error",
+        "bootstrap-start",
+        "host-services",
+        "react-request",
+        "routes-mounted",
+        "statsig-start",
+        "statsig-end",
         "plugin/installed",
         "registered",
         "completed",

@@ -124,6 +124,7 @@ function browser(storage = new Map(), fail = false) {
     },
   };
   const context = {
+    globalThis: {},
     window,
     document: { hidden: false, addEventListener() {} },
     navigator: { onLine: true },
@@ -152,6 +153,7 @@ function browser(storage = new Map(), fail = false) {
   });
   return {
     window,
+    hooks: context.globalThis,
     diag,
     shim,
     sockets,
@@ -410,4 +412,18 @@ test("upstream result cleanup and late response hook preserve settlement", () =>
   assert.equal(resolved, 1);
   assert.equal(events.at(-1).type, "late-response");
   assert.match(patch, /requestPromises\.set/);
+});
+
+test("startup attempts pair Statsig durations and reject unknown phases", () => {
+  const b = browser();
+  b.hooks.__codexWebStartupDiagnostic("statsig-start");
+  b.advance(10000);
+  b.hooks.__codexWebStartupDiagnostic("statsig-end");
+  b.hooks.__codexWebStartupDiagnostic("statsig-start");
+  b.hooks.__codexWebStartupDiagnostic("SECRET");
+  const phases = b.records().filter((r) => r.event === "startup.phase");
+  assert.equal(phases.length, 3);
+  assert.equal(phases[1].durationMs, 10000);
+  assert.equal(phases[2].current, false);
+  assert.doesNotMatch(JSON.stringify(phases), /SECRET/);
 });

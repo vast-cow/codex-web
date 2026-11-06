@@ -1,0 +1,46 @@
+--- a/webview/assets/app-initial-6350d04672d0.js
++++ b/webview/assets/app-initial-6350d04672d0.js
+@@ -504805,6 +504805,7 @@
+   systemVersion: s,
+   windowType: c,
+ }) {
++  globalThis.__codexWebStartupDiagnostic?.("statsig-start");
+   let l = new AbortController(),
+     u = null,
+     d;
+@@ -504840,6 +504841,7 @@
+       e,
+     );
+   } finally {
++    globalThis.__codexWebStartupDiagnostic?.("statsig-end");
+     u != null && globalThis.clearTimeout(u);
+   }
+   try {
+@@ -549962,6 +549964,7 @@
+     : ((n = () => {
+         t.get(Pkc) ||
+           (t.set(Pkc, !0),
++          globalThis.__codexWebStartupDiagnostic?.("routes-mounted"),
+           Ho.dispatchMessage(`log-message`, {
+             level: `info`,
+             message: `[startup][renderer] app routes mounted after ${Math.round(performance.now())}ms`,
+@@ -556290,6 +556293,7 @@
+   );
+ }
+ function kFc() {
++  globalThis.__codexWebStartupDiagnostic?.("bootstrap-start");
+   (pqe(),
+     DR.navigate(iF ?? window.location.pathname, `initial`, HFc),
+     VFc != null &&
+@@ -556297,9 +556301,11 @@
+       vs.markInitializationPhase(`renderer_entry_evaluated`, PFc)));
+ }
+ function AFc() {
++  globalThis.__codexWebStartupDiagnostic?.("host-services");
+   (vs.markInitializationPhase(`host_services_ready`), fOe(), I_e());
+ }
+ function jFc() {
++  globalThis.__codexWebStartupDiagnostic?.("react-request");
+   gr.info(`[statsig-refresh-diagnostics] React root render requested`, {
+     safe: { windowType: `electron` },
+   });

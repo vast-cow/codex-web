@@ -56,6 +56,9 @@ const events = new Set([
   "route.initial",
   "route.memory",
   "shim.initialize",
+  "startup.phase",
+  "startup.long-task",
+  "startup.requests",
   "socket.attempt",
   "socket.close",
   "socket.error",
@@ -179,6 +182,7 @@ diagnostic("info", "shim.initialize");
 Object.assign(globalThis, {
   __codexWebRequestDiagnostic(event: Record<string, unknown>) {
     try {
+      if (event.type === "registered") startupRequestCount++;
       diagnostic("debug", "rpc.lifecycle", {
         rpcId: String(event.id),
         method: event.method === "plugin/installed" ? event.method : "other",
@@ -201,4 +205,66 @@ if (diagnosticsEnabled) {
       });
     expected = now + 1000;
   }, 1000);
+}
+
+// Navigation-relative milestones and paired attempts; repeated initialization stays visible.
+const startupPhases = new Set([
+  "bootstrap-start",
+  "host-services",
+  "react-request",
+  "routes-mounted",
+  "statsig-start",
+  "statsig-end",
+]);
+let startupRequestCount = 0;
+const startupStarts = new Map<string, number>();
+Object.assign(globalThis, {
+  __codexWebStartupDiagnostic(stage: string) {
+    if (!diagnosticsEnabled || !startupPhases.has(stage)) return;
+    try {
+      const now = performance.now();
+      const previous = startupStarts.get(stage);
+      diagnostic("debug", "startup.phase", {
+        stage,
+        elapsedMs: now,
+        current: previous === undefined,
+        durationMs:
+          stage === "statsig-end"
+            ? now - (startupStarts.get("statsig-start") ?? now)
+            : undefined,
+      });
+      startupStarts.set(stage, now);
+      performance.mark(`codex-web:${stage}`);
+    } catch {}
+  },
+});
+if (diagnosticsEnabled && typeof PerformanceObserver !== "undefined") {
+  try {
+    const observer = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries())
+        diagnostic("debug", "startup.long-task", {
+          startMs: entry.startTime,
+          durationMs: entry.duration,
+        });
+    });
+    observer.observe({ type: "longtask", buffered: true });
+    window.addEventListener("pagehide", () => observer.disconnect(), {
+      once: true,
+    });
+  } catch {}
+}
+
+if (diagnosticsEnabled) {
+  const requestTimer = window.setInterval(() => {
+    diagnostic("debug", "startup.requests", {
+      count: startupRequestCount,
+      elapsedMs: performance.now(),
+    });
+    startupRequestCount = 0;
+  }, 1000);
+  window.addEventListener(
+    "pagehide",
+    () => window.clearInterval(requestTimer),
+    { once: true },
+  );
 }
