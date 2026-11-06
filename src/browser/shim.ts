@@ -223,10 +223,17 @@ function handleIncomingMessage(message: MainToRendererMessage): void {
         portId: message.portId,
         connectionId,
         ok: messagePorts.has(message.portId),
+        ...rpcMetadata(message),
       },
     );
     try {
       messagePorts.get(message.portId)?.postMessage(message.data);
+      diagnostic("trace", "port.post-api", {
+        portId: message.portId,
+        connectionId,
+        ok: messagePorts.has(message.portId),
+        ...rpcMetadata(message),
+      });
     } catch (error) {
       diagnostic("error", "port.forward-failure", { portId: message.portId });
       throw error;
@@ -705,7 +712,11 @@ export const ipcRenderer = {
           ports: messagePorts.size,
         });
         transferable.addEventListener("message", (event) => {
-          diagnostic("trace", "port.receive", { portId, connectionId });
+          diagnostic("trace", "port.receive", {
+            portId,
+            connectionId,
+            ...rpcMetadata({ type: "message-port-message", data: event.data }),
+          });
           enqueueMessage({
             type: "message-port-message",
             portId,

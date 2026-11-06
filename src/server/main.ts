@@ -173,7 +173,10 @@ class WebSocketMessagePort implements BridgedMessagePort {
       this.log("warn", "port.closed-use");
       return;
     }
-    this.log("trace", "port.send", { count: ++this.sentCount });
+    this.log("trace", "port.send", {
+      count: ++this.sentCount,
+      ...rpcMetadata({ type: "message-port-message", data }),
+    });
     this.sendToRenderer({
       type: "message-port-message",
       portId: this.portId,
@@ -200,7 +203,10 @@ class WebSocketMessagePort implements BridgedMessagePort {
       this.log("warn", "port.closed-use");
       return;
     }
-    this.log("trace", "port.receive", { count: ++this.receivedCount });
+    this.log("trace", "port.receive", {
+      count: ++this.receivedCount,
+      ...rpcMetadata({ type: "message-port-message", data }),
+    });
     const listeners = this.listeners.get("message");
     if (!listeners || listeners.size === 0) {
       if (this.pendingMessages.length === 0)

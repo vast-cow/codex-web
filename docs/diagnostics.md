@@ -289,3 +289,49 @@ without breaking execution. Neither explanation is confirmed by that capture.
 The separate roughly 27.5-second JavaScript response establishes latency, not
 its cause or a causal connection to those fallback events. New category, status,
 action, duration, and size metadata support investigating these separately.
+
+### Dedicated startup retention and response consumption
+
+A third independent budget now reserves 256 records / 160,000 bytes for startup
+phases, shim initialization, initial routes, socket/reconnect/reload events, and
+port setup/closure. RPC traffic cannot evict these records. There is no time
+expiry: milestones remain beyond the first 60 seconds until this separate budget
+fills. Repeated lifecycle traffic can eventually evict older milestones.
+Export insertion order and aggregate dropped counters cover all three budgets.
+Persistence accepts up to 1,856 records / 600,000 serialized characters; quota
+failures remain nonfatal. This supersedes the two-budget description above.
+
+The navigation-start phase records navigation-relative zero retrospectively;
+javascript-initialize records diagnostics module evaluation. These cannot
+observe errors before that module loads. Existing buffered long tasks can help
+inspect earlier main-thread work where supported. React render request, routes
+mounted, Statsig start/end, and port setup remain separate milestones.
+
+Server port.send and port.receive now include RPC IDs when recognized. Browser
+port.forward reports target existence; port.post-api reports posting returned
+(or ok=false if no target existed). Neither proves receipt. The upstream optional
+port.consumer-receive hook establishes receipt by the other MessagePort endpoint
+and reports its queue length before handling. It carries page and RPC identity;
+join to transport records on pageId/rpcId. It does not prove RPC consumption.
+The new webview-port-diagnostics patch is applied by prepare_asar.
+
+rpc.lifecycle response/rejection indicates matching in the upstream RPC consumer;
+late-response means no pending Promise. New resolved/rejected stages run after
+the actual resolver/rejector returns, with durationMs since enqueue and elapsedMs
+relative to navigation. These establish settlement, not downstream Promise
+continuation execution or React render completion. Timeout classification remains
+separate from settlement. No timeout or reconnect settings change.
+
+Compare browser-local monotonic timestamps across transport.receive,
+port.forward/post-api, port.consumer-receive, RPC matching and settlement.
+A consumer queue followed by delayed matching points to upstream dispatch waits.
+A late-response after timeout establishes arrival too late for matching. A server
+WebSocket callback without browser receipt cannot distinguish network delay from
+browser scheduling. Use long tasks and event-loop delays as supporting evidence;
+never subtract browser and server clocks.
+
+The existing server-006 capture contains response_routed records with short
+routing durations and nonzero queue waits. This confirms backend routing activity,
+not end-to-end delivery. The reported startup and timeout symptoms remain
+unexplained: no network, React, or handler root cause is confirmed. A fresh paired
+capture with retained startup milestones and consumer/settlement stages is needed.

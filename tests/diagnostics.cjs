@@ -262,7 +262,11 @@ test("server MessagePort queues, flushes, preserves listener exceptions and disc
     compilerOptions: { target: ts.ScriptTarget.ES2022 },
   }).outputText;
   const exports = {};
-  vm.runInNewContext(code, { exports, performance });
+  vm.runInNewContext(code, {
+    exports,
+    performance,
+    rpcMetadata: core.rpcMetadata,
+  });
   const events = [],
     sent = [];
   let closed = 0,
@@ -425,7 +429,12 @@ test("startup attempts pair Statsig durations and reject unknown phases", () => 
   b.hooks.__codexWebStartupDiagnostic("statsig-end");
   b.hooks.__codexWebStartupDiagnostic("statsig-start");
   b.hooks.__codexWebStartupDiagnostic("SECRET");
-  const phases = b.records().filter((r) => r.event === "startup.phase");
+  const phases = b
+    .records()
+    .filter(
+      (r) =>
+        r.event === "startup.phase" && String(r.stage).startsWith("statsig-"),
+    );
   assert.equal(phases.length, 3);
   assert.equal(phases[1].durationMs, 10000);
   assert.equal(phases[2].current, false);
@@ -539,4 +548,81 @@ test("priority budgets stay bounded and preserve insertion ordering", () => {
     Array.from(tail.records, (r) => r.sequence),
     [34, 36, 37, 38, 39],
   );
+});
+
+test("startup survives unsampled RPC pressure beyond sixty seconds and reload", () => {
+  const storage = new Map();
+  const b = browser(storage);
+  b.hooks.__codexWebStartupDiagnostic("bootstrap-start");
+  for (let i = 0; i < 5000; i++)
+    b.diag.diagnostic("debug", "rpc.lifecycle", {
+      rpcId: String(i),
+      stage: "registered",
+    });
+  b.advance(65000);
+  b.hooks.__codexWebStartupDiagnostic("routes-mounted");
+  b.diag.flushDiagnostics();
+  const restored = browser(storage).records();
+  assert.ok(restored.some((r) => r.stage === "bootstrap-start"));
+  assert.ok(restored.some((r) => r.stage === "navigation-start"));
+  assert.ok(
+    restored.some((r) => r.stage === "routes-mounted" && r.elapsedMs >= 60000),
+  );
+  assert.ok(b.records().length <= 1856);
+  assert.ok(JSON.parse(b.window.codexWebDiagnostics.export()).dropped > 0);
+});
+
+test("startup bucket has independent count and byte bounds", () => {
+  const tail = new core.DiagnosticTail(3, 500, 3, 500, 2, 500);
+  for (let i = 0; i < 100; i++)
+    tail.add({ event: "startup.phase", sequence: i });
+  assert.equal(tail.records.length, 2);
+  assert.equal(tail.dropped, 98);
+  tail.add({ event: "startup.phase", stage: "x".repeat(1000) });
+  assert.equal(tail.records.length, 2);
+  assert.equal(tail.dropped, 99);
+});
+
+test("missing response port retains RPC correlation without result data", () => {
+  const b = browser();
+  const socket = b.sockets[0];
+  socket.readyState = 1;
+  socket.fire("open");
+  socket.fire("message", {
+    data: JSON.stringify({
+      type: "message-port-message",
+      portId: "message_port_ipc_bridge_123",
+      data: { response: { id: 42, result: "SECRET" } },
+    }),
+  });
+  const rows = b.records().filter((r) => r.rpcId === "42");
+  assert.ok(rows.some((r) => r.event === "transport.receive"));
+  assert.ok(rows.some((r) => r.event === "port.forward" && r.ok === false));
+  assert.ok(rows.some((r) => r.event === "port.post-api" && r.ok === false));
+  assert.doesNotMatch(JSON.stringify(rows), /SECRET/);
+});
+
+test("consumer receipt hook is correlated, sanitized and persisted", () => {
+  const storage = new Map();
+  const b = browser(storage);
+  b.hooks.__codexWebPortDiagnostic(
+    { response: { id: 42, result: "SECRET" } },
+    3,
+  );
+  b.hooks.__codexWebRequestDiagnostic({
+    id: 42,
+    type: "resolved",
+    durationMs: 2000,
+  });
+  b.diag.flushDiagnostics();
+  const rows = browser(storage)
+    .records()
+    .filter((r) => r.rpcId === "42");
+  assert.ok(
+    rows.some(
+      (r) => r.event === "port.consumer-receive" && r.queueLength === 3,
+    ),
+  );
+  assert.ok(rows.some((r) => r.stage === "resolved" && r.durationMs === 2000));
+  assert.doesNotMatch(JSON.stringify(rows), /SECRET/);
 });

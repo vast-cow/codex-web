@@ -85,6 +85,10 @@ export function metadata(input: Record<string, unknown>) {
         "statsig-end",
         "plugin/installed",
         "registered",
+        "resolved",
+        "rejected",
+        "navigation-start",
+        "javascript-initialize",
         "completed",
         "failed",
         "late-response",
@@ -238,42 +242,58 @@ export function criticalEvent(record: Record<string, unknown>): boolean {
     typeof record.rpcId === "string"
   );
 }
+export function startupEvent(record: Record<string, unknown>): boolean {
+  return /^(startup\.phase|shim\.|route\.initial|socket\.|reconnect\.|page\.reload|port\.(register|start|close|disconnect))/.test(
+    String(record.event ?? ""),
+  );
+}
 export class DiagnosticTail {
   records: Record<string, unknown>[] = [];
   dropped = 0;
-  private entries: { critical: boolean; size: number }[] = [];
-  private counts: [number, number] = [0, 0];
-  private bytes: [number, number] = [4, 4];
+  private entries: { bucket: number; size: number }[] = [];
+  private counts: [number, number, number] = [0, 0, 0];
+  private bytes: [number, number, number] = [4, 4, 4];
   constructor(
     readonly maxCount = 400,
     readonly maxBytes = 110000,
     readonly criticalCount = 1200,
     readonly criticalBytes = 660000,
+    readonly startupCount = 256,
+    readonly startupBytes = 160000,
   ) {}
   clear() {
     this.records.length = 0;
     this.dropped = 0;
     this.entries = [];
-    this.counts = [0, 0];
-    this.bytes = [4, 4];
+    this.counts = [0, 0, 0];
+    this.bytes = [4, 4, 4];
   }
   add(record: Record<string, unknown>) {
     const critical = criticalEvent(record);
-    const countLimit = critical ? this.criticalCount : this.maxCount;
-    const byteLimit = critical ? this.criticalBytes : this.maxBytes;
+    const startup = startupEvent(record);
+    const countLimit = startup
+      ? this.startupCount
+      : critical
+        ? this.criticalCount
+        : this.maxCount;
+    const byteLimit = startup
+      ? this.startupBytes
+      : critical
+        ? this.criticalBytes
+        : this.maxBytes;
     const size = (row: Record<string, unknown>) =>
       JSON.stringify(row).length * 2 + 2;
     if (size(record) + 4 > byteLimit) {
       this.dropped++;
       return;
     }
-    const bucket = critical ? 1 : 0;
+    const bucket = startup ? 2 : critical ? 1 : 0;
     this.records.push(record);
-    this.entries.push({ critical, size: size(record) });
+    this.entries.push({ bucket, size: size(record) });
     this.counts[bucket]++;
     this.bytes[bucket] += size(record);
     while (this.counts[bucket] > countLimit || this.bytes[bucket] > byteLimit) {
-      const index = this.entries.findIndex((row) => row.critical === critical);
+      const index = this.entries.findIndex((row) => row.bucket === bucket);
       this.bytes[bucket] -= this.entries[index]!.size;
       this.entries.splice(index, 1);
       this.records.splice(index, 1);

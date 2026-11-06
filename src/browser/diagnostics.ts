@@ -3,6 +3,7 @@ import {
   DiagnosticTail,
   identity,
   metadata,
+  rpcMetadata,
 } from "../server/diagnostics/core";
 const key = "codex-web:diagnostics";
 let level: string | null = null;
@@ -36,6 +37,8 @@ const events = new Set([
   "port.close",
   "port.disconnect",
   "port.forward",
+  "port.post-api",
+  "port.consumer-receive",
   "port.forward-failure",
   "port.messageerror",
   "port.receive",
@@ -75,12 +78,12 @@ const events = new Set([
 // Only restore records written by this adapter; reapply the metadata allowlist.
 try {
   const saved = sessionStorage.getItem(key);
-  if (saved && saved.length <= 400000) {
+  if (saved && saved.length <= 600000) {
     const data = JSON.parse(saved);
     if (Number.isSafeInteger(data.suppressed) && data.suppressed > 0)
       priorSuppressed = data.suppressed;
     if (Array.isArray(data.records))
-      for (const record of data.records.slice(-1600)) {
+      for (const record of data.records.slice(-1856)) {
         if (record && typeof record === "object")
           tail.add({
             ...metadata(record),
@@ -177,16 +180,35 @@ for (const event of ["online", "offline", "visibilitychange", "pagehide"]) {
     },
   );
 }
+diagnostic("info", "startup.phase", {
+  stage: "navigation-start",
+  elapsedMs: 0,
+});
+diagnostic("info", "startup.phase", {
+  stage: "javascript-initialize",
+  elapsedMs: performance.now(),
+});
 diagnostic("info", "shim.initialize");
 
 // Optional upstream hook: absent in desktop Electron; diagnostics never throw.
 Object.assign(globalThis, {
+  __codexWebPortDiagnostic(data: unknown, queueLength: number) {
+    try {
+      diagnostic("trace", "port.consumer-receive", {
+        ...rpcMetadata({ type: "message-port-message", data }),
+        queueLength,
+      });
+    } catch {}
+  },
   __codexWebRequestDiagnostic(event: Record<string, unknown>) {
     try {
       if (event.type === "registered") startupRequestCount++;
       diagnostic("debug", "rpc.lifecycle", {
         rpcId: String(event.id),
         method: event.method === "plugin/installed" ? event.method : "other",
+        durationMs:
+          typeof event.durationMs === "number" ? event.durationMs : undefined,
+        elapsedMs: performance.now(),
         stage: event.timeout
           ? "timeout"
           : event.cancelled

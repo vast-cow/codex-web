@@ -8,7 +8,15 @@
            let r = this.requestPromises.get(e);
            if (r) {
              let i = Date.now();
-@@ -174360,6 +174361,7 @@
+@@ -174334,6 +174335,7 @@
+               this.clearRequestTimeout(r),
+               this.releaseRequestCapacity(r),
+               r.resolve(t),
++              globalThis.__codexWebRequestDiagnostic?.({id:e, method:r.method, type:"resolved", durationMs:Date.now() - r.queuedAtMs}),
+               this.emitRequestLifecycleEvent({
+                 type: `completed`,
+                 hostId: this.hostId,
+@@ -174360,6 +174362,7 @@
                }));
          }
          onError(e, t, n) {
@@ -16,7 +24,15 @@
            let r = this.requestPromises.get(e);
            if (r) {
              let i = Date.now();
-@@ -174630,6 +174632,7 @@
+@@ -174393,6 +174396,7 @@
+               this.clearRequestTimeout(r),
+               this.releaseRequestCapacity(r),
+               r.reject(a),
++              globalThis.__codexWebRequestDiagnostic?.({id:e, method:r.method, type:"rejected", durationMs:Date.now() - r.queuedAtMs}),
+               this.emitRequestLifecycleEvent({
+                 type: `failed`,
+                 hostId: this.hostId,
+@@ -174640,6 +174644,7 @@
                  queuedRequestCountAtEnqueue: this.queuedRequests.length,
                };
                (this.requestPromises.set(i, c),
@@ -24,7 +40,7 @@
                  r != null && this.pendingConfigReadRequests.set(r, c));
              });
            return (
-@@ -174939,6 +174942,7 @@
+@@ -174949,6 +174954,7 @@
              }));
          }
          emitRequestLifecycleEvent(e) {

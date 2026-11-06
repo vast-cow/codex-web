@@ -1,0 +1,10 @@
+--- a/webview/assets/app-shared-8bd9d0399038.js
++++ b/webview/assets/app-shared-8bd9d0399038.js
+@@ -119866,6 +119866,7 @@
+           ((this.#e = e),
+             e.start(),
+             e.addEventListener(`message`, (e) => {
++              globalThis.__codexWebPortDiagnostic?.(e.data, this.#r.length);
+               this.#i ||
+                 (e.data === null
+                   ? this.#a(Error(`Peer closed MessagePort connection.`))
