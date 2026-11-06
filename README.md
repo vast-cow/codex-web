@@ -46,13 +46,21 @@ Internet access is required; do not disable npm lifecycle scripts.
 
 ## Run locally
 
+### Development mode
+
+Run the backend and Vite development frontend in separate terminals:
+
 ```bash
+# Start the backend
 npm run server
+
+# Start the development frontend in another terminal
+npm run dev:browser
 ```
 
-Open <http://127.0.0.1:8214>. This serves the built application and backend,
-bound to loopback by default. The command rebuilds the server and browser frontend
-before launching.
+Open <http://127.0.0.1:4173> for the Vite development frontend.
+See [local development](docs/local-development.md) for editable source paths,
+rebuilds, and the difference between the two ports.
 
 ### Built mode
 
@@ -71,13 +79,6 @@ npm run server -- --port 4173
 
 Open <http://127.0.0.1:4173>. No Vite development server is needed.
 `npm run server` also rebuilds both components through its `preserver` hook.
-
-## Local development
-
-Run `npm run server` in one terminal and `npm run dev:browser` in another.
-Open <http://127.0.0.1:4173> for the Vite development frontend.
-See [local development](docs/local-development.md) for editable source paths,
-rebuilds, and the difference between the two ports.
 
 ## Tailscale remote access
 
