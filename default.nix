@@ -118,6 +118,7 @@ flake-utils.lib.eachSystem systems (
 
             echo "Installing server and package metadata"
             cp package.json README.md "$packageOut/"
+            cp -r docs "$packageOut/"
             cp -r src/server "$packageOut/src/"
             find "$packageOut/src/server" -type f ! -name '*.js' -delete
 
