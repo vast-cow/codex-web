@@ -2,11 +2,13 @@
 
 ## Scope and outcome
 
-**Repository follow-up:** static Brotli/gzip precompression and opt-in bootstrap boundary diagnostics are implemented and locally validated. The public shared-asset HEAD at **04:37:23 UTC** still returns 12,152,991 bytes without Content-Encoding when offered Brotli/gzip; no deployment containing this change is established. The previous “compression now negotiates” finding below concerns **WebSocket** compression. See [Implementation and local validation](#implementation-and-local-validation) and [deployment/collection instructions](bootstrap-delivery-diagnostics.md). No live speedup or attribution of the remaining bootstrap interval is claimed.
+**Current follow-up:** see [Pushed-revision live check and operator handoff](#pushed-revision-live-check-and-operator-handoff) for verified live Brotli/gzip delivery and complete browser captures: routes mount at **67.014 s cold / 39.698 s warm**, versus **181.132 / 43.387 s** in the matching earlier pair. The warm headers-to-close interval remains **16.192 s**, with host attribution still missing. Authenticated host execution is still unavailable; running revision and host-side deployment/diagnostic verification remain pending.
 
-**Latest recording analysis:** the warm bootstrap independently takes **21.103 s**, including **20.626 s** waiting for its complete streamed body, the longest remaining dependency. Current catalogs follow `app/installed` → `app/read` with a populated lifecycle gate; no large catalog broadcasts occur in the captured windows. See [Warm dependency and catalog analysis](#warm-dependency-and-catalog-analysis-of-existing-recordings) for the complete 43.387-second accounting, extraction controls, static-delivery evidence and prioritized measurement.
+**Earlier repository follow-up:** static Brotli/gzip precompression and opt-in bootstrap boundary diagnostics are implemented and locally validated. The public shared-asset HEAD at **04:37:23 UTC** still returns 12,152,991 bytes without Content-Encoding when offered Brotli/gzip; no deployment containing this change is established. The previous “compression now negotiates” finding below concerns **WebSocket** compression. See [Implementation and local validation](#implementation-and-local-validation) and [deployment/collection instructions](bootstrap-delivery-diagnostics.md). No live speedup or attribution of the remaining bootstrap interval is claimed.
 
-**Latest live check (2026-11-17 03:42–03:47 UTC): compression now negotiates, both complete bootstrap responses succeed, and neither load activates the fallback. Routes mount at 181.132 seconds cold and 43.387 seconds warm.** See [Live deployment verification follow-up](#live-deployment-verification-follow-up) for measurements and limits. Authenticated deployment-host access remains unavailable; the running revision and deployment procedure are unverified. Earlier deployment/compression statements below describe the earlier recordings.
+**Earlier recording analysis:** the warm bootstrap independently takes **21.103 s**, including **20.626 s** waiting for its complete streamed body, the longest remaining dependency. Current catalogs follow `app/installed` → `app/read` with a populated lifecycle gate; no large catalog broadcasts occur in the captured windows. See [Warm dependency and catalog analysis](#warm-dependency-and-catalog-analysis-of-existing-recordings) for the complete 43.387-second accounting, extraction controls, static-delivery evidence and prioritized measurement.
+
+**Earlier live check (2026-11-17 03:42–03:47 UTC): compression now negotiates, both complete bootstrap responses succeed, and neither load activates the fallback. Routes mount at 181.132 seconds cold and 43.387 seconds warm.** See [Live deployment verification follow-up](#live-deployment-verification-follow-up) for measurements and limits. Authenticated deployment-host access remains unavailable; the running revision and deployment procedure are unverified. Earlier deployment/compression statements below describe the earlier recordings.
 
 Measured `https://z170-1.tailddb1d3.ts.net:8214/` without changing application behavior. The deployment is reachable. The approximately 32.6-second post-bootstrap gap is reproduced: the fallback Statsig SDK waits for **three 10-second initialization attempts and 0.5/2-second retry delays**. It then becomes ready without usable evaluations, selects the default runtime, and mounts routes. The existing bootstrap retry patch does not remove these SDK retries.
 
@@ -497,3 +499,141 @@ Chromium Resource Timing confirms Brotli encoded/decoded sizes: shared JS **2,34
 **Pending live observations:** authenticated host access remains unavailable (existing SSH attempt was rejected; no credentials are present), the running Git/process/proxy identity remains unverified, and the 04:37 UTC HEAD still shows identity delivery. Do not rerun another multi-minute capture merely to reobserve the old deployment. After the host deploys this revision, collect a fresh cold/warm pair with the host diagnostics and CPU/RSS: public negotiated lengths/validators, first/last upstream reads and completion, bridge enqueue/buffer/write progress, calibrated browser receipts/close, and Ready/runtime milestones. Until those correlated spans exist, the dominant portion of the 20.626 seconds **cannot be assigned** to upstream reception, bridge pacing or browser delivery. In particular, delayed consumer pulls can delay upstream reads; early/late reader completion alone is insufficient to prove upstream production speed.
 
 The user's original affected WAN path remains an **outstanding requirement**, distinct from both this local smoke and the investigator's remote tailnet path. Current recordings already establish installed/read catalog access and no large catalog broadcasts in the measured windows. No catalog suppression change or redundant catalog capture was made.
+
+## Pushed-revision live check and operator handoff
+
+### Access, revision and measurement vantage
+
+At **2026-11-17 05:00 UTC**, the clean inspection checkout and `git ls-remote origin refs/heads/investigation-20261117-2` both identify **`ef6053032e1cca2484ca72958c9eda3ab3ff586c`**, containing `eec7c39` and `f76c3b4`. This verifies the intended revision is pushed; it does **not** identify the running revision. The current branch was preserved.
+
+The measurement client remains **CFFV5**, source `192.168.207.112`, route to `100.71.85.42` via `192.168.192.1 dev eth0`: **remote tailnet access, physical path unclassified**. All new public HTTP and browser measurements below use this vantage. There are no authenticated deployment-host measurements. Tailscale CLI is absent; direct/relay status is unknown. The user's original affected WAN validation remains outstanding.
+
+The fresh read-only attempt below exited **255** at `05:00:16 UTC`, with `Permission denied (publickey,gssapi-keyex,gssapi-with-mic,password)`:
+
+```sh
+ssh -o BatchMode=yes -o ConnectTimeout=8 \
+  -o StrictHostKeyChecking=accept-new \
+  -o UserKnownHostsFile=/tmp/codex-deploy-known-hosts \
+  root@z170-1.tailddb1d3.ts.net 'git rev-parse HEAD'
+```
+
+`root` is only the workspace's default account; the deployment account is unknown. No `/root/.ssh` directory or usable SSH agent is present. Available connected tools provide no authenticated terminal for this host. **No host retrieval, build, restart, environment change or rollback command was executed.** The service's revision, PID/build directory, runtime sibling files, server diagnostic code and service environment remain unverified.
+
+### Fresh HTTP evidence
+
+A complete GET (not HEAD) started around `05:00:08 UTC`:
+
+```sh
+curl --raw --max-time 90 -sS -H 'Accept-Encoding: br, gzip' \
+  -D /tmp/live-shared-headers.txt -o /tmp/live-shared-encoded.bin \
+  -w 'url=%{url_effective}\nhttp=%{http_code}\nremote_ip=%{remote_ip}\nsize_download=%{size_download}\ntime_starttransfer=%{time_starttransfer}\ntime_total=%{time_total}\n' \
+  https://z170-1.tailddb1d3.ts.net:8214/assets/app-shared-8bd9d0399038.js
+```
+
+HTTP **200**, effective `Content-Encoding: br`, **`Vary: Accept-Encoding`**, Content-Length and actual downloaded encoded body **2,347,986 bytes**; first byte **0.101313 s**, total **13.723024 s**. These bytes exclude HTTP headers and TLS/TCP overhead. ETag `W/"23d3d2-1a1e7348766"`, Last-Modified `Tue, 17 Nov 2026 01:52:21 GMT`, JavaScript MIME, unchanged `public, max-age=0`. Brotli decoding succeeds to **12,152,991 bytes**, SHA-256 **`8370d130013537f41c3431c9b60a2c1e30d7369c2150fea1416c3eb6ff34a439`**, exactly the baseline shared source. Body reduction is **80.68%**. Live encoded size differs from the earlier local 2,349,459-byte fixture; decoded equality establishes content equivalence, not compressor settings or build identity.
+
+Thus effective static Brotli delivery has reached the endpoint since the 04:37 identity-only HEAD. Pushing alone is not proof of deployment, and this response does not establish the running Git revision or physical `.br`/`.gz` installation.
+
+### Authenticated operator handoff
+
+Use [the existing build and diagnostic instructions](bootstrap-delivery-diagnostics.md) from an authenticated deployment-host session. The repository documents npm/Nix build/launch paths, but **does not specify this host's fetch/release/service-restart/rollback commands**. Do not substitute an invented service unit or start a competing listener.
+
+1. Identify the existing listener and TLS proxy, actual service account/unit/manager, PID, executable/arguments, working directory, loaded release/static directory, configured source remote/branch, and rollback release/command. Record UTC, Node version, current running revision and hashes. Compare that loaded artifact with intended `ef6053032e1cca2484ca72958c9eda3ab3ff586c`; an inspection checkout alone is insufficient. Retrieve the pushed revision through the host's existing workflow on its current branch, preserving local changes. These host-specific values and retrieval/restart commands remain **unknown** here.
+2. If needed, build and publish the **complete** artifact through that workflow. Exact repository npm commands in its existing Node/Nix environment are:
+
+   ```sh
+   npm ci --ignore-scripts
+   npm run build
+   npm run build:server
+   node scripts/diagnostics/validate-static-compression.cjs scratch/asar/webview/assets
+   ```
+
+   `HOSTED_CODEX_APP_ZIP` must be provided (the Nix shell supplies it); `npm run prepare` is the documented archive-downloading alternative. Source inspection verifies the intended order: `prepare:asar` extracts/patches assets → `build:browser` runs Vite then `node scripts/precompress-assets.cjs` → `build:server`. The `preserver` hook builds server then browser/precompression on an already prepared tree. Nix invokes `build` and moves the **whole** `scratch/asar` into the package runtime. These are source-level checks, not evidence the host executed them.
+3. In the actual published static directory, confirm `.js.br/.gz` and `.css.br/.gz` exist alongside source assets; decompress both siblings and compare byte-for-byte/hashes with their identity files. Run the validator against that runtime assets directory too. Record build logs/order, installed paths, hashes and new PID/revision. Repeat public GETs with `br`, `gzip`, `identity`, and returned `If-None-Match`, recording encoded sizes/validators/304s. Confirm the rebuilt browser shim and host diagnostic module are in the artifact used by that PID.
+4. For the focused trace, set **`CODEX_BOOTSTRAP_DIAGNOSTICS=1` in the existing service environment before process start**, with both server and browser rebuilt. Preserve existing listener, TLS proxy and WebSocket compression settings. The repository's equivalent foreground example is exactly:
+
+   ```sh
+   umask 077
+   CODEX_BOOTSTRAP_DIAGNOSTICS=1 CODEX_CLI_PATH="$(command -v codex)" \
+     node src/server/main.js --host 127.0.0.1 --port 8214 \
+     2> /tmp/bootstrap-host.log
+   ```
+
+   Use the existing production service/log sink rather than this example if service-managed. Collect CPU/RSS, e.g. `pidstat -rud -p SERVER_PID 1` if available; `SERVER_PID` must be resolved on the host.
+5. With host stderr covering the same UTC window, run the exact documented client capture into a new private directory, with no concurrent bulk download:
+
+   ```sh
+   PLAYWRIGHT_MODULE=/tmp/codex-startup-tools/node_modules/playwright \
+   CAPTURE_SECONDS=360 READY_SELECTOR='textarea, [contenteditable="true"]' \
+   node scripts/diagnostics/capture-startup.cjs \
+     https://z170-1.tailddb1d3.ts.net:8214/ /tmp/startup-with-host-spans
+   ```
+
+   Cold run is fresh-profile; warm is its same-context normal reload. Verify `upstream-start`, traced response header/UUID/stream and final cumulative totals, browser receipt/dispatch/close, Ready/runtime and mount. Join upstream and bridge **cumulative decoded byte ranges**, not cross-boundary sequence numbers. Correlate read-start/read/end, serialize/enqueue, queue/backpressure/local callback and explicit browser receipts. For nearby probes apply **host minus browser ∈ [H0−B, H1−B]**, choose narrow RTT bounds and check drift; no synchronized-wall-clock assumption. A local write callback never establishes browser receipt. Report overlapping waits without adding them. Sparse consumer pulls may delay reads; missing upstream events require the real packaged-service reader hook before attribution.
+6. **Remove/disable `CODEX_BOOTSTRAP_DIAGNOSTICS` and restart the existing service after collection**, then verify normal operation. This session did not enable it and cannot verify or restore host environment state. Repeat the pair on the **original affected WAN client/path**, recording Tailscale direct/relay, account/profile/cache, asset identity and screenshots. Only that actual test closes the WAN requirement.
+
+The previously measured **20.626-second** warm headers-to-close interval is still not attributable to a specific host boundary without the spans in step 5. An untagged browser capture can update receipt timing but cannot supply upstream completion, serialization/enqueue or local write progress, nor clock-offset bounds. The missing observations are explicit, not evidence of zero time at those boundaries.
+
+### Complete compressed cold/warm browser capture
+
+The unchanged harness completed both loads successfully at `05:01:04–05:03:46 UTC`. This session needed the existing Node/browser/library paths below (the initial attempts without them failed before navigation):
+
+```sh
+umask 077
+LD_LIBRARY_PATH=/tmp/codex-startup-libs/extracted/usr/lib/x86_64-linux-gnu \
+CHROMIUM_PATH=/tmp/codex-review-browsers/chromium-1248/chrome-linux64/chrome \
+PLAYWRIGHT_MODULE=/tmp/codex-startup-tools/node_modules/playwright \
+CAPTURE_SECONDS=360 READY_SELECTOR='textarea, [contenteditable="true"]' \
+/tmp/node-v22.23.3-linux-x64/bin/node scripts/diagnostics/capture-startup.cjs \
+  https://z170-1.tailddb1d3.ts.net:8214/ /tmp/startup-compressed-live-0502
+```
+
+Same Chromium 156 executable, viewport, fresh-profile then same-context normal reload, normal cache, no throttling, workspace route and authenticated application as the matching **03:42–03:47 pair**. No competing investigation bulk download ran during either load. Both screenshots show the mounted composer; both explicit route logs exist; **zero `Runtime.exceptionThrown` events**. Raw NDJSON, traces, page snapshots, screenshots and authenticated profile stay private in `/tmp/startup-compressed-live-0502`. Retained metadata is [sanitized evidence](live-compression-follow-up-2026-11-17.json). Times below are seconds from each first navigation request; cold epoch origin `1794891664.930854`, warm `1794891758.613243`.
+
+| Cold measurement | Matching earlier live cold | New compressed cold |
+| --- | ---: | ---: |
+| Shared JS encoded body | 12,152,991 B | 2,347,986 B |
+| Shared JS decoded resource | 12,152,991 B | 12,152,991 B |
+| Shared JS request duration (Resource Timing) | 72.027 s | 15.130 s |
+| Shared JS body download, responseStart→responseEnd | 71.910 s | 14.857 s |
+| Shared JS complete, navigation-relative | 72.348 s | 15.255 s |
+| Initial JS encoded body | 18,311,126 B | 3,494,645 B |
+| Initial JS decoded resource | 18,311,126 B | 18,311,126 B |
+| Initial JS request duration (Resource Timing) | 63.067 s | 15.526 s |
+| Initial JS body download, responseStart→responseEnd | 62.988 s | 15.440 s |
+| Initial JS complete, navigation-relative | 135.767 s | 31.124 s |
+| React root render requested | 137.457 s | 32.679 s |
+| Statsig Ready | 168.606 s | 54.940 s |
+| Routes mounted | 181.132 s | 67.014 s |
+
+Both cold responses explicitly carry `Content-Encoding: br`. Initial JS decoded-cache SHA-256 also matches baseline **`662b23e65e264082798da83334cc219f72f5141ded3b282723b7b19988e1a2e0`** (Brotli decoded from its cache body, excluding cache metadata). Shared/initial body reductions are **80.68% / 80.92%**. Chromium Resource Timing `transferSize` is **2,348,286 / 3,494,945 B**, its encoded body plus nominal 300-byte allowance; CDP actual encoded totals including response headers are **2,348,345 / 3,495,004 B**. Neither is the decoded size or a TLS/TCP wire count.
+
+The observed cold mount decrease is **114.118 s**, React decrease **104.778 s**. Keep those measurements separate from asset-byte reductions: host/backend state and capacity are uncontrolled, browser preload changed to include diagnostics, and bootstrap completion also differs. This is a comparable-method observational pair, not a controlled causal compression-only estimate. It does not validate the original affected WAN.
+
+Warm shared/initial responses are actual **304s** (`responseReceivedExtraInfo`), completing at **+0.286 / +0.903 s**; CDP encoded totals **344 / 344 B**, with no body transfer. Resource Timing retains cached encoded/decoded body lengths and reports `transferSize: 300`; those cached body sizes are **not bytes downloaded on reload**. React requests render at **+1.554 s**, routes mount **+39.698 s** (earlier warm **43.387 s**, observed decrease **3.689 s**). Both new IPC upgrades retain `permessage-deflate; server_no_context_takeover; client_no_context_takeover`. No chunked catalog transfers were found in these capture windows.
+
+### Warm receipt timeline and precise missing correlation
+
+| Browser event | Earlier warm (+s) | New warm (+s) |
+| --- | ---: | ---: |
+| React root render requested | 1.583 | 1.554 |
+| Bootstrap request | 11.516 | 11.834 |
+| Bootstrap headers | 11.993 | 12.632 |
+| First bootstrap stream write received | 11.993 | 12.632 |
+| Last write received | 32.618 | 28.823 |
+| Explicit stream close received | 32.619 | 28.824 |
+| Statsig evaluations Ready | 32.860 | 29.005 |
+| Primary runtime selected | 33.024 | 29.156 |
+| Routes mounted | 43.387 | 39.698 |
+
+New warm fetch UUID **`d4d1dccb-57f8-455e-989f-5706cab3cf22`**, response pull **17**, readable stream **11**. Reconstructed complete outer JSON body **7,933,129 decoded bytes**, **10,596,766 JSON-envelope bytes** including close (neither is compressed WebSocket wire size). New request→headers **0.798 s**, headers→close **16.192 s**, close→Ready **0.181 s**, Ready→runtime **0.151 s**, runtime→mount **10.542 s**. These nonoverlapping bootstrap/initialization intervals are not sums of per-chunk waits. The earlier **20.626 s** is a different run's interval; the new **16.192 s** confirms the body-completion dependency persists but cannot explain where the earlier interval was spent.
+
+Cold bootstrap UUID `be605d46-4a39-4339-8f21-00cfde5a07bb`, pull **17**, stream **7**: request +34.086, headers +34.736, first write +34.739, last write +54.674, close +54.675; **7,933,132 decoded bytes**, complete outer JSON. Both runs publish Ready and select the primary runtime without fallback initialize fetches.
+
+**Browser shim availability is now independently confirmed:** a post-capture GET of `/assets/preload.js` contains `bootstrap-clock-reply`, `[bootstrap-delivery]` and `browser-receipt`; its cold response was Brotli, 107,140 encoded bytes, Last-Modified `04:57:01 GMT`. This confirms the updated browser code is served, not the server code/revision. Both captures contain **zero diagnostic console markers, clock probes or `x-codex-bootstrap-trace` headers**. That is consistent with default-off diagnostics or incomplete server deployment; it does not establish the service flag's value. Host instrumentation presence and activation remain unverified.
+
+No host upstream headers/read-start/read/end, serialization, send-queue, bufferedAmount, queue-progress, local-write callbacks or clock samples are available. Therefore **no host/browser offset bounds can be computed or applied**, and there is no correlated host/browser timeline to report. Browser CDP receipts establish arrival of the matching stream messages only; they cannot substitute for enqueue/write timestamps. The exact outstanding observation is the authenticated diagnostic capture in the operator handoff, including nearby `[H0−B,H1−B]` bounds and matching cumulative byte totals. No diagnostic setting was changed in this session; its host-side normal setting still requires verification after the operator's collection.
+
+### Post-capture HTTP checks
+
+After both captures, a full `curl --raw -H 'Accept-Encoding: gzip'` GET of the same shared URL returned HTTP **200**, **`Content-Encoding: gzip`**, **`Vary: Accept-Encoding`**, **2,808,778 actual encoded body bytes**, **17.161172 s** total, ETag `W/"2adbca-1a1e7348766"`. Gunzip produces the same 12,152,991-byte baseline SHA-256 as Brotli. The identity HEAD returns 12,152,991-byte Content-Length, no Content-Encoding, Vary, and a distinct ETag `W/"b9709f-1a1e7348766"`. A Brotli GET with `If-None-Match: W/"23d3d2-1a1e7348766"` returns **304**, Vary, the same Brotli ETag/encoding, and **0 downloaded body bytes**. Public Brotli **and gzip** delivery are verified; runtime filesystem siblings and full host build order still require authenticated inspection.

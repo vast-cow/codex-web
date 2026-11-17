@@ -1,0 +1,335 @@
+{
+  "vantage": "CFFV5 remote tailnet access, physical path unclassified; original affected WAN untested",
+  "intendedPushedRevision": "ef6053032e1cca2484ca72958c9eda3ab3ff586c",
+  "runningRevision": null,
+  "hostSpansAvailable": false,
+  "runs": {
+    "1": {
+      "epochOriginSeconds": 1794891664.930854,
+      "assetsResourceTimingMilliseconds": {
+        "preload.js": {
+          "startTime": 107.59999999962747,
+          "duration": 637.6999999992549,
+          "responseStart": 150.7999999988824,
+          "responseEnd": 745.2999999988824,
+          "encodedBodySize": 107140,
+          "decodedBodySize": 605015,
+          "transferSize": 107440
+        },
+        "app-shared-8bd9d0399038.js": {
+          "startTime": 126.39999999850988,
+          "duration": 15129.5,
+          "responseStart": 398.59999999962747,
+          "responseEnd": 15255.89999999851,
+          "encodedBodySize": 2347986,
+          "decodedBodySize": 12152991,
+          "transferSize": 2348286
+        },
+        "app-initial-6350d04672d0.js": {
+          "startTime": 15599,
+          "duration": 15526.199999999255,
+          "responseStart": 15684.699999999255,
+          "responseEnd": 31125.199999999255,
+          "encodedBodySize": 3494645,
+          "decodedBodySize": 18311126,
+          "transferSize": 3494945
+        }
+      },
+      "assetsCDP": [
+        {
+          "url": "https://z170-1.tailddb1d3.ts.net:8214/assets/preload.js",
+          "start": 0.106,
+          "end": 0.744,
+          "encodedBytes": 107497,
+          "actualStatus": 200
+        },
+        {
+          "url": "https://z170-1.tailddb1d3.ts.net:8214/assets/index-44a69cb8b3cd.js",
+          "start": 0.125,
+          "end": 0.318,
+          "encodedBytes": 759,
+          "actualStatus": 200
+        },
+        {
+          "url": "https://z170-1.tailddb1d3.ts.net:8214/assets/app-shared-8bd9d0399038.js",
+          "start": 0.125,
+          "end": 15.255,
+          "encodedBytes": 2348345,
+          "actualStatus": 200
+        },
+        {
+          "url": "https://z170-1.tailddb1d3.ts.net:8214/assets/app-initial-6350d04672d0.js",
+          "start": 15.598,
+          "end": 31.124,
+          "encodedBytes": 3495004,
+          "actualStatus": 200
+        }
+      ],
+      "milestones": [
+        {
+          "t": 32.679,
+          "message": "[statsig-refresh-diagnostics] React root render requested",
+          "safe": {
+            "windowType": "electron"
+          }
+        },
+        {
+          "t": 54.94,
+          "message": "Publishing Statsig execution evaluations",
+          "safe": {
+            "status": "Ready",
+            "unifiedProjects": true
+          }
+        },
+        {
+          "t": 55.146,
+          "message": "Codex runtime config selected",
+          "safe": {
+            "artifact": "codex-primary-runtime",
+            "source": "statsig-layer"
+          }
+        },
+        {
+          "t": 67.014,
+          "message": "[startup][renderer] app routes mounted after 67015ms",
+          "safe": {}
+        }
+      ],
+      "bootstrap": {
+        "requestId": "be605d46-4a39-4339-8f21-00cfde5a07bb",
+        "requestSeconds": 34.086,
+        "headersSeconds": 34.736,
+        "pull": 17,
+        "stream": 7,
+        "decodedBodyBytes": 7933132,
+        "sha256": "afee78c9f5530c6d6a6292fe62d8e0d567658cc9ce3081b2819da41c3e856241",
+        "completeJson": true,
+        "jsonEnvelopeBytes": 10595221,
+        "firstWrite": {
+          "t": 34.739,
+          "bytes": 3843
+        },
+        "lastWrite": {
+          "t": 54.674,
+          "bytes": 19660
+        },
+        "closeSeconds": 54.675
+      },
+      "upgrades": [
+        {
+          "t": 1.39,
+          "status": 101,
+          "extensions": "permessage-deflate; server_no_context_takeover; client_no_context_takeover"
+        },
+        {
+          "t": 66.278,
+          "status": 101,
+          "extensions": "permessage-deflate; server_no_context_takeover; client_no_context_takeover"
+        },
+        {
+          "t": 68.934,
+          "status": 101,
+          "extensions": "permessage-deflate; server_no_context_takeover; client_no_context_takeover"
+        },
+        {
+          "t": 72.262,
+          "status": 101,
+          "extensions": "permessage-deflate; server_no_context_takeover; client_no_context_takeover"
+        },
+        {
+          "t": 73.577,
+          "status": 101,
+          "extensions": "permessage-deflate; server_no_context_takeover; client_no_context_takeover"
+        }
+      ],
+      "diagnosticConsoleMarkers": 0,
+      "clockProbeMentions": 0,
+      "traceHeaderMentions": 0,
+      "runtimeExceptions": 0,
+      "catalogTransfers": 0
+    },
+    "2": {
+      "epochOriginSeconds": 1794891758.613243,
+      "assetsResourceTimingMilliseconds": {
+        "preload.js": {
+          "startTime": 125.5,
+          "duration": 44.40000000037253,
+          "responseStart": 159.09999999962747,
+          "responseEnd": 169.90000000037253,
+          "encodedBodySize": 107140,
+          "decodedBodySize": 605015,
+          "transferSize": 300
+        },
+        "app-shared-8bd9d0399038.js": {
+          "startTime": 125.90000000037253,
+          "duration": 161.39999999850988,
+          "responseStart": 159,
+          "responseEnd": 287.2999999988824,
+          "encodedBodySize": 2347986,
+          "decodedBodySize": 12152991,
+          "transferSize": 300
+        },
+        "app-initial-6350d04672d0.js": {
+          "startTime": 635,
+          "duration": 269.09999999962747,
+          "responseStart": 663.1999999992549,
+          "responseEnd": 904.0999999996275,
+          "encodedBodySize": 3494645,
+          "decodedBodySize": 18311126,
+          "transferSize": 300
+        }
+      },
+      "assetsCDP": [
+        {
+          "url": "https://z170-1.tailddb1d3.ts.net:8214/assets/preload.js",
+          "start": 0.125,
+          "end": 0.169,
+          "encodedBytes": 343,
+          "actualStatus": 304
+        },
+        {
+          "url": "https://z170-1.tailddb1d3.ts.net:8214/assets/index-44a69cb8b3cd.js",
+          "start": 0.125,
+          "end": 0.16,
+          "encodedBytes": 341,
+          "actualStatus": 304
+        },
+        {
+          "url": "https://z170-1.tailddb1d3.ts.net:8214/assets/app-shared-8bd9d0399038.js",
+          "start": 0.125,
+          "end": 0.286,
+          "encodedBytes": 344,
+          "actualStatus": 304
+        },
+        {
+          "url": "https://z170-1.tailddb1d3.ts.net:8214/assets/app-initial-6350d04672d0.js",
+          "start": 0.634,
+          "end": 0.903,
+          "encodedBytes": 344,
+          "actualStatus": 304
+        }
+      ],
+      "milestones": [
+        {
+          "t": 1.554,
+          "message": "[statsig-refresh-diagnostics] React root render requested",
+          "safe": {
+            "windowType": "electron"
+          }
+        },
+        {
+          "t": 29.005,
+          "message": "Publishing Statsig execution evaluations",
+          "safe": {
+            "status": "Ready",
+            "unifiedProjects": true
+          }
+        },
+        {
+          "t": 29.156,
+          "message": "Codex runtime config selected",
+          "safe": {
+            "artifact": "codex-primary-runtime",
+            "source": "statsig-layer"
+          }
+        },
+        {
+          "t": 39.698,
+          "message": "[startup][renderer] app routes mounted after 39699ms",
+          "safe": {}
+        }
+      ],
+      "bootstrap": {
+        "requestId": "d4d1dccb-57f8-455e-989f-5706cab3cf22",
+        "requestSeconds": 11.834,
+        "headersSeconds": 12.632,
+        "pull": 17,
+        "stream": 11,
+        "decodedBodyBytes": 7933129,
+        "sha256": "ca44928d690eb120ca9cf2e20ef22b2a6fbdf134e90711ef40aca3431b0e7fc3",
+        "completeJson": true,
+        "jsonEnvelopeBytes": 10596766,
+        "firstWrite": {
+          "t": 12.632,
+          "bytes": 16384
+        },
+        "lastWrite": {
+          "t": 28.823,
+          "bytes": 19657
+        },
+        "closeSeconds": 28.824
+      },
+      "upgrades": [
+        {
+          "t": 0.289,
+          "status": 101,
+          "extensions": "permessage-deflate; server_no_context_takeover; client_no_context_takeover"
+        },
+        {
+          "t": 38.931,
+          "status": 101,
+          "extensions": "permessage-deflate; server_no_context_takeover; client_no_context_takeover"
+        },
+        {
+          "t": 41.46,
+          "status": 101,
+          "extensions": "permessage-deflate; server_no_context_takeover; client_no_context_takeover"
+        },
+        {
+          "t": 43.689,
+          "status": 101,
+          "extensions": "permessage-deflate; server_no_context_takeover; client_no_context_takeover"
+        },
+        {
+          "t": 44.975,
+          "status": 101,
+          "extensions": "permessage-deflate; server_no_context_takeover; client_no_context_takeover"
+        }
+      ],
+      "diagnosticConsoleMarkers": 0,
+      "clockProbeMentions": 0,
+      "traceHeaderMentions": 0,
+      "runtimeExceptions": 0,
+      "catalogTransfers": 0
+    }
+  },
+  "httpChecks": {
+    "sharedAsset": "/assets/app-shared-8bd9d0399038.js",
+    "decodedBytes": 12152991,
+    "decodedSha256": "8370d130013537f41c3431c9b60a2c1e30d7369c2150fea1416c3eb6ff34a439",
+    "brotli": {
+      "status": 200,
+      "vary": "Accept-Encoding",
+      "contentEncoding": "br",
+      "actualEncodedBodyBytes": 2347986,
+      "firstByteSeconds": 0.101313,
+      "totalSeconds": 13.723024,
+      "decodedHashMatchesBaseline": true
+    },
+    "gzip": {
+      "status": 200,
+      "vary": "Accept-Encoding",
+      "contentEncoding": "gzip",
+      "actualEncodedBodyBytes": 2808778,
+      "totalSeconds": 17.161172,
+      "decodedHashMatchesBaseline": true
+    },
+    "brotliRevalidation": {
+      "status": 304,
+      "actualEncodedBodyBytes": 0,
+      "vary": "Accept-Encoding"
+    },
+    "identityHead": {
+      "status": 200,
+      "contentLength": 12152991,
+      "contentEncoding": null,
+      "vary": "Accept-Encoding"
+    }
+  },
+  "initialDecodedSha256": "662b23e65e264082798da83334cc219f72f5141ded3b282723b7b19988e1a2e0",
+  "browserShimMarkersPresent": [
+    "bootstrap-clock-reply",
+    "[bootstrap-delivery]",
+    "browser-receipt"
+  ]
+}
