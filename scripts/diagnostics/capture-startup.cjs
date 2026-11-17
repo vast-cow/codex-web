@@ -20,16 +20,24 @@ if (ab && (!process.env.CAPTURE_PROFILE || !process.env.CAPTURE_CLIENT_PATH || !
 }
 if (ab && fs.readdirSync(output).length) throw new Error('A/B output must be a new empty directory');
 (async () => {
-  const release = ab ? require('./rpc-ab-control.cjs').acquireControl(profile, {
+  const controls = ab ? {
     url, seconds, runs, profile, clientPath: process.env.CAPTURE_CLIENT_PATH,
     chromiumPath: process.env.CHROMIUM_PATH,
     chromiumSha256: require('node:crypto').createHash('sha256').update(fs.readFileSync(process.env.CHROMIUM_PATH)).digest('hex'),
+    playwrightModule: require.resolve(process.env.PLAYWRIGHT_MODULE || 'playwright'),
+    nodeVersion: process.version, libraryPath: process.env.LD_LIBRARY_PATH || null,
     headless: process.env.HEADED !== '1', viewport: { width: 1440, height: 1000 },
     readySelector: process.env.READY_SELECTOR || null,
     cache: 'normal HTTP cache; no overrides', rpcDiagnostics: true, warmupSettleMs: 15000,
-  }) : () => {};
+    safety: ab.safety,
+  } : null;
+  const release = ab ? require('./rpc-ab-control.cjs').acquireControl(profile, controls) : () => {};
   let context;
   try {
+    if (ab) {
+      fs.writeFileSync(path.join(output, 'host-ready.json'), JSON.stringify(ab, null, 2), { mode: 0o600 });
+      fs.writeFileSync(path.join(output, 'capture-controls.json'), JSON.stringify(controls, null, 2), { mode: 0o600 });
+    }
     context = await chromium.launchPersistentContext(profile, {
       headless: process.env.HEADED !== '1',
       ...(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {}),
@@ -52,7 +60,6 @@ if (ab && fs.readdirSync(output).length) throw new Error('A/B output must be a n
       'Runtime.consoleAPICalled', 'Runtime.exceptionThrown',
     ]) cdp.on(event, data => log?.write(JSON.stringify({ event, observedAt: Date.now(), ...data }) + '\n'));
     if (ab) {
-      fs.writeFileSync(path.join(output, 'host-ready.json'), JSON.stringify(ab, null, 2), { mode: 0o600 });
       // Unmeasured warmup, identical for both configurations. Never clear caches.
       await page.goto(url, { waitUntil: 'commit', timeout: 60000 });
       await page.locator(process.env.READY_SELECTOR || 'textarea, [contenteditable="true"]').first()
@@ -60,6 +67,8 @@ if (ab && fs.readdirSync(output).length) throw new Error('A/B output must be a n
       await page.waitForTimeout(15000);
     }
     for (let run = 1; run <= runs; run++) {
+      // Recheck freshness after warmup and before every measured navigation.
+      if (ab) require('./rpc-ab-control.cjs').validateReady(ab, url);
       let browserComplete = !ab;
       const coverage = new Set();
       const observe = data => {

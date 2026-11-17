@@ -15,6 +15,15 @@ const ready = {
   resourceCapture: 'unavailable', baselineLocation: '/test/baseline',
   hostBundleSha256: 'a'.repeat(64), browserBundleSha256: 'b'.repeat(64),
   bootstrapDiagnostics: true, rpcDiagnostics: true, exclusiveTraffic: true,
+  deploymentAcceptanceSatisfied: true, activeConfigurationVerified: true, rollbackReady: true,
+  acceptanceEvidence: 'offline fixture only; not a host relay',
+  supervisor: { identity: 'fixture', stopCommand: 'fixture stop', startCommand: 'fixture start',
+    rollbackCommand: 'fixture rollback' },
+  safety: { adaptiveFlightLimitBytes: 1048576, rssIncreaseBytes: 16777216,
+    ackP95RegressionPercent: 25, minimumBodyImprovementPercent: 15,
+    approvalReference: 'offline fixture', flightGuardMode: 'observer-abort',
+    flightScope: 'selected-stream', breachAction: 'stop trial and restore A',
+    queueRule: 'no sustained growth' },
 };
 
 test('readiness gate rejects stale, wrong-origin, ambiguous or incomplete host confirmations', () => {
@@ -25,6 +34,11 @@ test('readiness gate rejects stale, wrong-origin, ambiguous or incomplete host c
     { confirmedUTC: new Date(now + 1).toISOString() },
     { rpcDiagnostics: false }, { bootstrapDiagnostics: false }, { exclusiveTraffic: false },
     { hostBundleSha256: 'unknown' }, { baselineLocation: '' },
+    { deploymentAcceptanceSatisfied: false }, { activeConfigurationVerified: false },
+    { rollbackReady: false }, { acceptanceEvidence: '' }, { supervisor: undefined },
+    { supervisor: { ...ready.supervisor, rollbackCommand: '' } },
+    { safety: undefined }, { safety: { ...ready.safety, adaptiveFlightLimitBytes: 0 } },
+    { safety: { ...ready.safety, approvalReference: '' } },
     { window: { ...ready.window, minimumBytes: 524288 } },
   ]) assert.throws(() => validateReady({ ...ready, ...change }, ready.url, now));
   assert.throws(() => validateReady(ready, 'https://other.invalid/', now));
@@ -47,7 +61,7 @@ test('shared profile lock prevents overlap and controls cannot change between co
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('capture harness performs three warm reloads per arm and records exact settings without a network', () => {
+test('capture harness records A-B-A with three warm reloads per batch without a network', () => {
   const { spawnSync } = require('node:child_process');
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rpc-ab-harness-'));
   try {
@@ -72,18 +86,20 @@ test('capture harness performs three warm reloads per arm and records exact sett
         waitForTimeout: async () => {}, screenshot: async () => {},
         evaluate: async () => ({text:'test', resources:[], navigation:[]})
       };
-      exports.chromium = {launchPersistentContext: async () => ({
+      exports.chromium = {launchPersistentContext: async () => {
+        fs.appendFileSync(process.env.TEST_CALLS, 'launch\\n');
+        return ({
         pages: () => [page], newCDPSession: async () => cdp, addInitScript: async () => {},
         browser: () => ({version: () => 'test-browser'}), close: async () => {}
-      })};
+      }); }};
     `);
-    for (const configuration of ['A', 'B']) {
+    for (const [batch, configuration] of [['A1', 'A'], ['B', 'B'], ['A2', 'A']]) {
       const relay = { ...ready, configuration, confirmedUTC: new Date().toISOString(),
         confirmation: `HOST READY — rpc-ab-A — ${configuration}`,
         window: { ...ready.window, minimumBytes: configuration === 'A' ? 65536 : 524288 } };
       const relayFile = path.join(dir, `${configuration}.json`);
       fs.writeFileSync(relayFile, JSON.stringify(relay));
-      const output = path.join(dir, configuration);
+      const output = path.join(dir, batch);
       const result = spawnSync(process.execPath, [path.join(__dirname, 'capture-startup.cjs'), ready.url, output], {
         encoding: 'utf8', env: { ...process.env, PLAYWRIGHT_MODULE: mock, CHROMIUM_PATH: mock,
           RPC_AB_HOST_READY: relayFile, CAPTURE_PROFILE: path.join(dir, 'profile'),
@@ -91,13 +107,24 @@ test('capture harness performs three warm reloads per arm and records exact sett
           READY_SELECTOR: '', HEADED: '0', TEST_CALLS: path.join(dir, 'calls') },
       });
       assert.equal(result.status, 0, result.stderr);
+      const controls = JSON.parse(fs.readFileSync(path.join(output, 'capture-controls.json')));
+      assert.deepEqual(controls.safety, ready.safety);
+      assert.equal(controls.runs, 3);
       for (let run = 1; run <= 3; run++) {
         const manifest = JSON.parse(fs.readFileSync(path.join(output, `run-${run}-manifest.json`)));
         assert.deepEqual(manifest.host, relay);
         assert.equal(manifest.browserComplete, true);
       }
     }
+    const invalidRelay = path.join(dir, 'not-approved.json');
+    fs.writeFileSync(invalidRelay, JSON.stringify({ ...ready, deploymentAcceptanceSatisfied: false }));
+    const rejected = spawnSync(process.execPath, [path.join(__dirname, 'capture-startup.cjs'),
+      ready.url, path.join(dir, 'rejected')], { encoding: 'utf8',
+      env: { ...process.env, PLAYWRIGHT_MODULE: mock, RPC_AB_HOST_READY: invalidRelay,
+        TEST_CALLS: path.join(dir, 'calls') } });
+    assert.notEqual(rejected.status, 0);
+    assert.match(rejected.stderr, /deploymentAcceptanceSatisfied/);
     assert.equal(fs.readFileSync(path.join(dir, 'calls'), 'utf8'),
-      'warmup\nreload\nreload\nreload\nwarmup\nreload\nreload\nreload\n');
+      'launch\nwarmup\nreload\nreload\nreload\n'.repeat(3));
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });

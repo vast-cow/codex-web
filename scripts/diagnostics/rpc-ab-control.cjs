@@ -27,6 +27,24 @@ function validateReady(ready, url, now = Date.now()) {
   assert.equal(ready.bootstrapDiagnostics, true);
   assert.equal(ready.rpcDiagnostics, true);
   assert.equal(ready.exclusiveTraffic, true);
+  for (const key of ['deploymentAcceptanceSatisfied', 'activeConfigurationVerified', 'rollbackReady']) {
+    assert.equal(ready[key], true, `Host must explicitly confirm ${key}`);
+  }
+  assert.ok(typeof ready.acceptanceEvidence === 'string' && ready.acceptanceEvidence.trim(),
+    'Missing host deployment acceptance evidence');
+  for (const key of ['identity', 'stopCommand', 'startCommand', 'rollbackCommand']) {
+    assert.ok(typeof ready.supervisor?.[key] === 'string' && ready.supervisor[key].trim(),
+      `Missing actual supervisor ${key}`);
+  }
+  for (const key of ['adaptiveFlightLimitBytes', 'rssIncreaseBytes', 'ackP95RegressionPercent',
+    'minimumBodyImprovementPercent']) {
+    assert.ok(Number.isFinite(ready.safety?.[key]) && ready.safety[key] > 0,
+      `Missing approved safety threshold ${key}`);
+  }
+  for (const key of ['approvalReference', 'flightGuardMode', 'flightScope', 'breachAction', 'queueRule']) {
+    assert.ok(typeof ready.safety?.[key] === 'string' && ready.safety[key].trim(),
+      `Missing approved safety rule ${key}`);
+  }
   return ready;
 }
 

@@ -3,6 +3,8 @@
 Status: prepared, **not measured**. No host readiness confirmation has been
 received for this comparison. Prior captures are reference evidence, not A runs.
 Do not contact the live application with the harness before fresh host readiness.
+See the [verified CFFV5 environment](rpc-window-ab-client.md) for exact local paths,
+offline checks, and the remaining network-path uncertainty.
 
 Use `scripts/diagnostics/capture-startup.cjs` in its opt-in A/B mode. This adds
 host-confirmation validation before Chromium launches, a shared-profile lock,
@@ -18,9 +20,10 @@ account, browser, client machine and network path for A and B. Record Tailscale
 direct/relay status before and after each batch. Do not run speed tests, concurrent
 tabs, captures, bulk requests or cancellation probes during timed runs.
 
-Collect A first, stop the browser, finish and save host logs, then coordinate B's
-cutover. A fresh readiness relay is required for each batch; never reuse A's relay
-for B. The host must keep that configuration active through the entire batch and
+Use A-before (three reloads), B (three), A-after (three) where the host can safely
+perform the two cutovers. Stop Chromium and finish/save logs between batches.
+A fresh readiness relay is required for each batch, including A-after; never reuse
+a previous relay. The host must keep that configuration active through the batch and
 confirm afterward that it did not change. Capture matching host stdout, stderr,
 and resource samples from before warmup until the client has closed. An unexpected
 restart, competing traffic or path change invalidates the batch. Local profile
@@ -33,7 +36,7 @@ placeholders are deliberately invalid and must not be treated as confirmation:
 {
   "captureId": "rpc-window-A-01",
   "configuration": "A",
-  "confirmation": "HOST READY — rpc-window-A-01 — A",
+  "confirmation": "REPLACE_WITH_VERBATIM_HOST_CONFIRMATION",
   "confirmedUTC": "REPLACE_WITH_HOST_CONFIRMATION_UTC",
   "source": "REPLACE_WITH_ACTUAL_HOST_RELAY_PROVENANCE",
   "url": "https://z170-1.tailddb1d3.ts.net:8214/",
@@ -52,9 +55,46 @@ placeholders are deliberately invalid and must not be treated as confirmation:
   "exclusiveTraffic": true,
   "hostLog": "REPLACE_WITH_HOST_STDOUT_AND_STDERR_LOCATIONS",
   "resourceCapture": "REPLACE_WITH_SAMPLER_LOCATION_OR_UNAVAILABLE_AND_REASON",
-  "baselineLocation": "REPLACE_WITH_PRESERVED_A_DEPLOYMENT_LOCATION"
+  "baselineLocation": "REPLACE_WITH_PRESERVED_A_DEPLOYMENT_LOCATION",
+  "deploymentAcceptanceSatisfied": false,
+  "activeConfigurationVerified": false,
+  "rollbackReady": false,
+  "acceptanceEvidence": "REPLACE_WITH_HOST_ACCEPTANCE_RESULTS_AND_GUARD_REVIEW",
+  "supervisor": {
+    "identity": "REPLACE_WITH_ACTUAL_SUPERVISOR",
+    "stopCommand": "REPLACE_WITH_ACTUAL_STOP_COMMAND",
+    "startCommand": "REPLACE_WITH_ACTUAL_START_COMMAND",
+    "rollbackCommand": "REPLACE_WITH_ACTUAL_ROLLBACK_COMMAND"
+  },
+  "safety": {
+    "approvalReference": "REPLACE_WITH_Z170_1_APPROVAL",
+    "adaptiveFlightLimitBytes": null,
+    "flightGuardMode": "REPLACE_WITH_APPROVED_OBSERVER_OR_DATA_PATH_BEHAVIOR",
+    "flightScope": "REPLACE_WITH_APPROVED_PER_STREAM_OR_AGGREGATE_SCOPE",
+    "breachAction": "REPLACE_WITH_HOST_MONITOR_ABORT_AND_ROLLBACK_PROCEDURE",
+    "rssIncreaseBytes": null,
+    "ackP95RegressionPercent": null,
+    "minimumBodyImprovementPercent": null,
+    "queueRule": "REPLACE_WITH_APPROVED_BUFFER_AND_QUEUE_THRESHOLDS"
+  }
 }
 ```
+
+Only z170-1 can supply the confirmation matching
+`HOST READY — <captureId> — <configuration>` and set the three acceptance booleans
+true. CFFV5 must not create a ready signal or substitute assumed supervisor
+commands. The gate rejects missing acceptance, rollback readiness, commands or
+approved thresholds. Confirmation must be under 30 minutes old at launch and
+before every measured reload. Each batch needs host monitoring throughout it;
+the client stores safety rules but does **not** implement a host flight guard.
+
+The proposed 1-MiB adaptive-flight guard is still under host review. Earlier
+isolated tests exceeded 1 MiB in both variants. Do not assume acceptance, silently
+raise the threshold, or interpret it as a 1-MiB adaptive window maximum. Record
+whether the approved guard aborts the observation externally or changes the data
+path. A data-path cap would change the treatment and must be explicitly described
+and approved, with the original A preserved. The host must confirm monitor scope,
+sampling, atomic overshoot handling and abort/rollback behavior before readiness.
 
 A's original constants are initial 262144, minimum 65536, maximum 1073741824
 estimated bytes; verify these against the loaded host. B must report minimum
@@ -76,7 +116,9 @@ directory. Keep every export identical except readiness file and output director
 
 ```sh
 export PLAYWRIGHT_MODULE=/tmp/codex-startup-tools/node_modules/playwright
-export CHROMIUM_PATH=/absolute/path/to/the/confirmed/chromium
+export CHROMIUM_PATH=/tmp/codex-review-browsers/chromium-1248/chrome-linux64/chrome
+export LD_LIBRARY_PATH=/tmp/codex-startup-libs/extracted/usr/lib/x86_64-linux-gnu
+export PATH=/tmp/node-v22.23.3-linux-x64/bin:$PATH
 export CAPTURE_PROFILE=/tmp/bootstrap-diag-20261117-01/profile
 export CAPTURE_CLIENT_PATH='REPLACE: client identity, interface, Tailscale direct/relay and path'
 export CAPTURE_SECONDS=360
@@ -91,6 +133,11 @@ node scripts/diagnostics/capture-startup.cjs \
 RPC_AB_HOST_READY=/tmp/rpc-window-B-ready.json \
 node scripts/diagnostics/capture-startup.cjs \
   https://z170-1.tailddb1d3.ts.net:8214/ /tmp/rpc-window-B-01
+
+# Only after B finishes and z170-1 verifies/restores the original A:
+RPC_AB_HOST_READY=/tmp/rpc-window-A-after-ready.json \
+node scripts/diagnostics/capture-startup.cjs \
+  https://z170-1.tailddb1d3.ts.net:8214/ /tmp/rpc-window-A-after-01
 ```
 
 Each batch performs one unmeasured navigation, waits for a visible composer and
@@ -137,18 +184,23 @@ Use nearby clock probes to bound host-minus-browser clock offset by
 enqueue-to-receipt bounds to determine whether credit gains moved into the socket
 queue or browser scheduling. Report uncertainty and scheduling/read-gap evidence.
 
-Publish a per-run table with A1–A3/B1–B3, configuration and bundle identity, body
+Publish a per-run table with A-before-1–3/B-1–3/A-after-1–3, configuration and bundle identity, body
 duration, credit count/union time, peak outstanding, RTT, writer time, socket/queue
 peaks, route time, RSS/CPU and integrity result. For each arm report median,
 min–max and median absolute deviation across runs, plus B-minus-A median and
 percentage change. With three runs, do not claim statistical significance.
 Retain individual values and excluded runs; missing data stays unavailable.
+Report A-before and A-after separately first. Compare their medians/ranges and
+path status to check drift; do not pool A until their comparability is established.
+Compare B with both flanking baselines. If A-after is impractical, document the
+host's reason and the missing drift control rather than implying an A-B-A result.
 
-Before capture, fix decision thresholds. Suggested conservative thresholds for
-this experiment: meaningful body improvement requires both >10% and >500 ms lower
-median with the difference exceeding the larger arm's observed range. Treat RSS
-growth >25% and >32 MiB, or socket peak growth >2x and >1 MiB, as material. Report
-continuous values too; thresholds are decision rules, not instrument precision.
+Before capture, use the thresholds approved by z170-1 and record them verbatim in
+`safety`. Previous proposed criteria included >1 MiB estimated flight as an abort,
+>16 MiB sustained RSS growth, >25% p95 ACK regression and at least 15% median body
+improvement. These remain proposals until z170-1 confirms acceptance and resolves
+the guard concern. They supersede neither host review nor the final approved
+thresholds. Report continuous values too; thresholds are not instrument precision.
 Any unexplained sustained queue growth is also material. Reject B if material
 memory/buffering growth occurs without body improvement. Reduced credit wait alone
 does not establish improvement; inspect full body and route times and other queues.
