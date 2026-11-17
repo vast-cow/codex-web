@@ -16,6 +16,7 @@ import { WebSocket, WebSocketServer } from "ws";
 import Fastify from "fastify";
 import fastifyMultipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
+import { staticAssetDelivery } from "./static-assets";
 import { installModuleAliasHook } from "./module";
 
 type ServerOptions = {
@@ -465,6 +466,7 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
   });
 
   await app.register(fastifyStatic, {
+    ...staticAssetDelivery,
     root: path.resolve(__dirname, "../../scratch/asar/webview"),
     prefix: "/",
   });
