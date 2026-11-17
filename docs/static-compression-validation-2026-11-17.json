@@ -1,0 +1,112 @@
+{
+  "scope": "Local Fastify static delivery; recorded application assets and live remote bridge for Chromium smoke. Not a deployed cold-start or original affected WAN measurement.",
+  "node": "22.23.3",
+  "assets": [
+    {
+      "file": "app-initial-6350d04672d0.js",
+      "sha256": "662b23e65e264082798da83334cc219f72f5141ded3b282723b7b19988e1a2e0",
+      "representations": {
+        "br": {
+          "bytes": 3494172,
+          "etag": "W/\"35511c-1a1e7c5626c\"",
+          "lastModified": "Tue, 17 Nov 2026 04:30:35 GMT"
+        },
+        "gzip": {
+          "bytes": 4270110,
+          "etag": "W/\"41281e-1a1e7c5626c\"",
+          "lastModified": "Tue, 17 Nov 2026 04:30:35 GMT"
+        },
+        "identity": {
+          "bytes": 18311126,
+          "etag": "W/\"11767d6-1a1e7c5626c\"",
+          "lastModified": "Tue, 17 Nov 2026 04:30:35 GMT"
+        }
+      }
+    },
+    {
+      "file": "app-shared-8bd9d0399038.js",
+      "sha256": "8370d130013537f41c3431c9b60a2c1e30d7369c2150fea1416c3eb6ff34a439",
+      "representations": {
+        "br": {
+          "bytes": 2349459,
+          "etag": "W/\"23d993-1a1e7c5625f\"",
+          "lastModified": "Tue, 17 Nov 2026 04:30:35 GMT"
+        },
+        "gzip": {
+          "bytes": 2804700,
+          "etag": "W/\"2acbdc-1a1e7c5625f\"",
+          "lastModified": "Tue, 17 Nov 2026 04:30:35 GMT"
+        },
+        "identity": {
+          "bytes": 12152991,
+          "etag": "W/\"b9709f-1a1e7c5625f\"",
+          "lastModified": "Tue, 17 Nov 2026 04:30:35 GMT"
+        }
+      }
+    },
+    {
+      "file": "app-shared-9a94b907ed47.css",
+      "sha256": "69f929f71947824fed18365d54c8aa0c975a856649339e585a50f6f547e215d7",
+      "representations": {
+        "br": {
+          "bytes": 136186,
+          "etag": "W/\"213fa-1a1e7c5ab6e\"",
+          "lastModified": "Tue, 17 Nov 2026 04:30:53 GMT"
+        },
+        "gzip": {
+          "bytes": 165856,
+          "etag": "W/\"287e0-1a1e7c5ab6e\"",
+          "lastModified": "Tue, 17 Nov 2026 04:30:53 GMT"
+        },
+        "identity": {
+          "bytes": 1268149,
+          "etag": "W/\"1359b5-1a1e7c5ab6e\"",
+          "lastModified": "Tue, 17 Nov 2026 04:30:53 GMT"
+        }
+      }
+    }
+  ],
+  "chromium": {
+    "composerVisible": true,
+    "pageErrors": [],
+    "resources": [
+      {
+        "name": "http://127.0.0.1:18214/assets/app-shared-8bd9d0399038.js",
+        "duration": 147.80000000074506,
+        "contentEncoding": "br",
+        "encodedBodySize": 2349459,
+        "decodedBodySize": 12152991,
+        "transferSize": 2349759
+      },
+      {
+        "name": "http://127.0.0.1:18214/assets/app-shared-9a94b907ed47.css",
+        "duration": 21.200000001117587,
+        "contentEncoding": "br",
+        "encodedBodySize": 136186,
+        "decodedBodySize": 1268149,
+        "transferSize": 136486
+      },
+      {
+        "name": "http://127.0.0.1:18214/assets/app-initial-6350d04672d0.js",
+        "duration": 191.90000000037253,
+        "contentEncoding": "br",
+        "encodedBodySize": 3494172,
+        "decodedBodySize": 18311126,
+        "transferSize": 3494472
+      }
+    ]
+  },
+  "checks": {
+    "staticNegotiationAndConditionalRequests": "passed",
+    "serverTypecheck": "passed",
+    "delayedUpstreamAndRealWebSocketDiagnosticFixture": "passed",
+    "actualBrowserShimDiagnosticFixture": "passed"
+  },
+  "liveHeadAtUTC": "2026-11-17 04:37:23",
+  "liveHead": {
+    "status": 200,
+    "offeredEncoding": "br, gzip",
+    "contentEncoding": null,
+    "contentLength": 12152991
+  }
+}
