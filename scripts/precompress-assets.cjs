@@ -3,6 +3,7 @@ const fs = require("node:fs/promises");
 const path = require("node:path");
 const { promisify } = require("node:util");
 const { performance } = require("node:perf_hooks");
+const { clearLine, cursorTo } = require("node:readline");
 const { gzip, brotliCompress, constants } = require("node:zlib");
 async function collectFiles(directory, files) {
   let entries;
@@ -23,49 +24,109 @@ async function collectFiles(directory, files) {
   }
 }
 
+// Conservatively count non-ASCII characters as two cells to avoid wrapping wide
+// characters. Strip terminal controls from filenames before displaying them.
+function fitStatus(text, columns) {
+  let result = "";
+  let width = 0;
+  for (const character of text) {
+    const cells = character.codePointAt(0) > 0x7e ? 2 : 1;
+    if (width + cells > columns) break;
+    result += character;
+    width += cells;
+  }
+  return result;
+}
+
+function createProgress(started) {
+  const output = process.stdout;
+  let current;
+  let timer;
+  let visible = false;
+  function draw() {
+    if (!current) return;
+    const { index, total, file, stage } = current;
+    const prefix = `[precompress] ${index}/${total} | `;
+    const suffix = ` | ${stage} | elapsed ${((performance.now() - started) / 1000).toFixed(1)}s`;
+    // Leave the last column free to avoid terminal auto-wrap.
+    const width = Math.max(0, (output.columns || 80) - 1);
+    const available = Math.max(0, width - prefix.length - suffix.length);
+    const cleanPath = file.replace(/[\x00-\x1f\x7f-\x9f]/g, "?");
+    const shortPath = fitStatus(cleanPath, available);
+    const label =
+      shortPath === cleanPath
+        ? cleanPath
+        : available >= 3
+          ? `${fitStatus(cleanPath, available - 3)}...`
+          : shortPath;
+    cursorTo(output, 0);
+    clearLine(output, 0);
+    output.write(fitStatus(prefix + label + suffix, width));
+    visible = true;
+  }
+  return {
+    update(index, total, file, stage) {
+      if (!output.isTTY) return;
+      current = { index, total, file, stage };
+      draw();
+      if (!timer) {
+        timer = setInterval(draw, 100);
+        timer.unref();
+      }
+    },
+    finish() {
+      clearInterval(timer);
+      if (visible) output.write("\n");
+    },
+  };
+}
+
 async function precompress(root) {
   const started = performance.now();
   console.log(`[precompress] Starting asset precompression in ${root}`);
   const files = [];
-  await collectFiles(root, files);
-  console.log(`[precompress] Found ${files.length} eligible JS/CSS files`);
-  for (const [index, file] of files.entries()) {
-    const label = `[${index + 1}/${files.length}] ${path.relative(root, file)}`;
-    let stage = "read source";
-    try {
-      const source = await fs.readFile(file);
-      console.log(`[precompress] ${label}: original ${source.length} bytes`);
-      // Sequential files bound build memory; never compress source maps or user files.
-      for (const [format, suffix, compress, options] of [
-        ["gzip", ".gz", gzip, { level: 9 }],
-        [
-          "Brotli",
-          ".br",
-          brotliCompress,
-          { params: { [constants.BROTLI_PARAM_QUALITY]: 9 } },
-        ],
-      ]) {
-        stage = `${format} compression`;
-        console.log(`[precompress] ${label}: starting ${format}`);
-        const operationStarted = performance.now();
-        const encoded = await promisify(compress)(source, options);
-        stage = `${format} write`;
-        await fs.writeFile(file + suffix, encoded);
-        stage = `${format} timestamp preservation`;
-        const { atime, mtime } = await fs.stat(file);
-        await fs.utimes(file + suffix, atime, mtime);
-        console.log(
-          `[precompress] ${label}: ${format} completed in ${(performance.now() - operationStarted).toFixed(1)} ms, ${encoded.length} bytes`,
+  const progress = createProgress(started);
+  try {
+    await collectFiles(root, files);
+    for (const [index, file] of files.entries()) {
+      let stage = "read source";
+      try {
+        const source = await fs.readFile(file);
+        // Sequential files bound build memory; never compress source maps or user files.
+        for (const [format, suffix, compress, options] of [
+          ["gzip", ".gz", gzip, { level: 9 }],
+          [
+            "brotli",
+            ".br",
+            brotliCompress,
+            { params: { [constants.BROTLI_PARAM_QUALITY]: 9 } },
+          ],
+        ]) {
+          stage = `${format} compression`;
+          progress.update(
+            index + 1,
+            files.length,
+            path.relative(root, file),
+            format,
+          );
+          const encoded = await promisify(compress)(source, options);
+          stage = `${format} write`;
+          await fs.writeFile(file + suffix, encoded);
+          stage = `${format} timestamp preservation`;
+          const { atime, mtime } = await fs.stat(file);
+          await fs.utimes(file + suffix, atime, mtime);
+        }
+      } catch (error) {
+        throw new Error(
+          `[precompress] ${file}: ${stage} failed: ${error.message}`,
+          {
+            cause: error,
+          },
         );
       }
-    } catch (error) {
-      throw new Error(
-        `[precompress] ${file}: ${stage} failed: ${error.message}`,
-        {
-          cause: error,
-        },
-      );
     }
+  } finally {
+    progress.finish();
   }
   console.log(
     `[precompress] ${files.length === 0 ? "No eligible files. " : ""}Processed ${files.length} files in ${(performance.now() - started).toFixed(1)} ms`,
