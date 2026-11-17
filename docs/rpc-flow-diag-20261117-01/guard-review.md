@@ -1,5 +1,13 @@
 # RPC flight guard review
 
+## Approved isolation-only follow-up
+
+The user approved the resource-budget plan for further isolated validation only.
+[Budget validation](budget-validation.md) records the implemented scoped limits,
+concurrent-client tests, private kernel-network tests and supervisor rehearsal.
+The live recommendation remains **NO-GO**; no production deployment, restart or
+configuration change was authorized or performed.
+
 Status: isolated validation only; production artifacts/service were neither changed
 nor restarted. **Not ready for a live trial under the existing acceptance rule.**
 The 1-MiB stop condition remains in force until a separately approved experiment

@@ -1,0 +1,13 @@
+{
+  "scope": "excluded exploratory run before the fixed MTU/offload/seed controls",
+  "profile": "netem-variable",
+  "mode": "512k",
+  "policy": "observe",
+  "repeat": 1,
+  "observedError": "page.evaluate: Target page, context or browser has been closed",
+  "configuredWorkerDeadlineMs": 120000,
+  "cause": "undetermined; RPC state at exit was not captured, so deadline cleanup versus browser exit cannot be distinguished",
+  "controls": "MTU/offloads not recorded; jitter seed uncontrolled; delay changed 150 ms after source marker",
+  "stderrSha256": "a2fa07f7ce422f6f1d406966fa050eea9a9be62990e1d67bf916b1e3ccdf30ff",
+  "productionAffected": false
+}

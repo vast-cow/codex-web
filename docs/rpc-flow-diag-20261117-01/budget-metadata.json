@@ -1,0 +1,72 @@
+{
+  "collectedAt": "2026-11-17T16:15:43.826629+00:00",
+  "snapshot": "post-validation, not a guarantee of future availability",
+  "MemTotal": 33317560320,
+  "MemAvailable": 26094850048,
+  "planningAllowance": 2147483648,
+  "cgroupFilesReadable": false,
+  "scopeReadOnly": "MemoryCurrent=26557558784\nMemoryMax=infinity\nId=session-3.scope\n\nMemoryCurrent=28613869568\nMemoryMax=infinity\nId=user-1000.slice\n\nMemoryCurrent=28613906432\nMemoryMax=infinity\nId=user.slice\n",
+  "systemdActivation": "isolated transient unit creation rejected: Interactive authentication required",
+  "sourceHostHash": "73f93b81152bff48cd27bcebcf27c430fb763e5c7418c67824950f4092ba933d",
+  "cores": {
+    "baseline": "fb0bc4c067951bb01641a66c5260667cc8cf9c7933f74cce9e79654d1ec28fde",
+    "512k": "20238f1cd118fcd8e83fc3008245ed8bef5a225a794f3d72d391880c0e0ef888",
+    "browser": "86795c4e8060243e75d9952820b17fa09187334ccb979f22e9dfc633e0f18ae7"
+  },
+  "applicationSources": [
+    {
+      "sha256": "9acc2fce257860581361e812743d06e6fdb02ce5bab549e19f962d44c5d9ecc3",
+      "rows": 72
+    },
+    {
+      "sha256": "af86b2cfedb23843f9cb73b07ac8dc98e2c76e2c463214b9612e3684ca28da53",
+      "rows": 24
+    },
+    {
+      "sha256": "6135f17f23fc8126e7012d116eb27b7bed4cc7424c2fc9bb124d3d2098190dcb",
+      "rows": 16
+    },
+    {
+      "sha256": "fbef97c8db3f7bf5f188a504a7d545d7f46fc1c5d5aca2bc7171776f09c95e41",
+      "rows": 8
+    }
+  ],
+  "kernelSha256": "8705ec754fcc2ab2454eed1fc54980555821ed7fc9fa3faef79bb2723e6467fb",
+  "rows": 112,
+  "limits": {
+    "clients": 2,
+    "streamsPerClient": 2,
+    "maxDecodedWrite": 81920,
+    "maxEstimatedWrite": 328192,
+    "flight": {
+      "item": 2099232,
+      "connection": 4198464,
+      "total": 8396928
+    },
+    "window": 1771040,
+    "decoded": {
+      "item": 524288,
+      "connection": 1048576,
+      "total": 2097152
+    },
+    "transport": {
+      "item": 524288,
+      "connection": 524288,
+      "total": 1048576
+    },
+    "peer": {
+      "receive": 262144,
+      "reverse": 32768
+    },
+    "memory": {
+      "controllerRss": 100663296,
+      "hostRss": 268435456,
+      "hostHeap": 100663296,
+      "hostExternal": 67108864,
+      "rendererRss": 805306368,
+      "rendererHeap": 134217728,
+      "chromiumRss": 1342177280,
+      "totalRss": 1610612736
+    }
+  }
+}

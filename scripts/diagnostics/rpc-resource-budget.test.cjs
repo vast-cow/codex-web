@@ -68,3 +68,58 @@ test("multi-client sums and memory budgets do not depend on the estimator ratio"
   b.close("b");
   assert.deepEqual(b.current(), { flight: 0, decoded: 0, transport: 0 });
 });
+
+test("third client admission is independently rejected and healthy peers keep distinct ledgers", async () => {
+  const b = new ResourceBudget({ enabled: true });
+  assert.ok(b.admit("one", "stream"));
+  assert.ok(b.admit("two", "stream"));
+  b.reserve("decoded", "one", "stream", 65536);
+  b.reserve("decoded", "two", "stream", 65536);
+  assert.equal(b.peaks.decoded.total, 131072);
+  assert.equal(b.admit("three"), false);
+  assert.equal(b.clients.size, 2);
+  b.close("one");
+  assert.equal(b.current().decoded, 65536);
+  b.close("two");
+  assert.equal(b.current().decoded, 0);
+});
+
+test("packet shaping refuses the parent network namespace before creating artifacts", () => {
+  const fs = require("node:fs"),
+    path = require("node:path"),
+    os = require("node:os");
+  const { spawnSync } = require("node:child_process");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "rpc-no-netem-"));
+  try {
+    const output = path.join(root, "must-not-exist");
+    const result = spawnSync(
+      process.execPath,
+      [path.join(__dirname, "rpc-netem.cjs"), output],
+      {
+        env: {
+          ...process.env,
+          RPC_PARENT_NETNS: fs.readlinkSync("/proc/self/ns/net"),
+        },
+        encoding: "utf8",
+      },
+    );
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Refusing netem/);
+    assert.equal(fs.existsSync(output), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("nonfinite memory or adaptive targets fail closed instead of looking like zero usage", () => {
+  for (const value of [NaN, Infinity, -1]) {
+    const memory = new ResourceBudget({ enabled: true });
+    memory.memory({ hostRss: value });
+    assert.equal(memory.tripped, true);
+    assert.equal(memory.violations[0].kind, "telemetry");
+    const window = new ResourceBudget({ enabled: true });
+    window.window("connection", "stream", value, 262404);
+    assert.equal(window.tripped, true);
+    assert.equal(window.violations[0].kind, "telemetry");
+  }
+});

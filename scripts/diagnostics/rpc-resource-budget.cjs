@@ -3,20 +3,22 @@ const MiB = 1024 * 1024;
 const limits = Object.freeze({
   clients: 2,
   streamsPerClient: 2,
-  maxDecodedWrite: 65536,
-  maxEstimatedWrite: 262404,
+  maxDecodedWrite: 81920,
+  maxEstimatedWrite: 328192,
   flight: { item: 8 * 262404, connection: 16 * 262404, total: 32 * 262404 },
-  window: 7 * 262404,
+  window: 8 * 262404 - 328192,
   decoded: { item: 512 * 1024, connection: MiB, total: 2 * MiB },
   transport: { item: 512 * 1024, connection: 512 * 1024, total: MiB },
+  peer: { receive: 256 * 1024, reverse: 32 * 1024 },
   memory: {
+    controllerRss: 96 * MiB,
     hostRss: 256 * MiB,
     hostHeap: 96 * MiB,
     hostExternal: 64 * MiB,
-    rendererRss: 512 * MiB,
+    rendererRss: 768 * MiB,
     rendererHeap: 128 * MiB,
-    chromiumRss: 768 * MiB,
-    totalRss: 1024 * MiB,
+    chromiumRss: 1280 * MiB,
+    totalRss: 1536 * MiB,
   },
 });
 class ResourceBudget {
@@ -73,6 +75,14 @@ class ResourceBudget {
         return false;
     this.clients.set(connection, streams);
     if (stream !== undefined) streams.add(stream);
+    this.peaks.connections = Math.max(
+      this.peaks.connections || 0,
+      this.clients.size,
+    );
+    this.peaks.streamsPerConnection = Math.max(
+      this.peaks.streamsPerConnection || 0,
+      streams.size,
+    );
     return true;
   }
   totals(kind, connection, item, value) {
@@ -144,7 +154,20 @@ class ResourceBudget {
     );
   }
   window(connection, item, value, atomic) {
+    if (
+      !Number.isFinite(value) ||
+      value <= 0 ||
+      !Number.isFinite(atomic) ||
+      atomic < 0
+    )
+      return this.breach(
+        "telemetry",
+        `${connection}/${item}/window`,
+        String(value),
+        0,
+      );
     this.peaks.window = Math.max(this.peaks.window || 0, value);
+    this.peaks.atomic = Math.max(this.peaks.atomic || 0, atomic);
     if (atomic > this.limits.maxEstimatedWrite)
       this.breach(
         "atomic",
@@ -164,6 +187,10 @@ class ResourceBudget {
   memory(sample) {
     this.checks++;
     for (const [key, value] of Object.entries(sample)) {
+      if (!Number.isFinite(value) || value < 0) {
+        this.breach("telemetry", key, String(value), 0);
+        continue;
+      }
       this.peakMemory[key] = Math.max(this.peakMemory[key] || 0, value);
       if (value > this.limits.memory[key])
         this.breach("memory", key, value, this.limits.memory[key]);

@@ -1,0 +1,201 @@
+{
+  "root": "/tmp/rpc-supervisor-approved.j6AXYj/stage",
+  "port": 36877,
+  "commands": [
+    {
+      "command": "node scripts/diagnostics/rpc-isolated-supervisor.cjs start /tmp/rpc-supervisor-approved.j6AXYj/stage baseline",
+      "result": {
+        "ready": true,
+        "port": 36877,
+        "pid": 42,
+        "selected": "baseline"
+      }
+    },
+    {
+      "command": "node scripts/diagnostics/rpc-isolated-supervisor.cjs stop /tmp/rpc-supervisor-approved.j6AXYj/stage",
+      "result": {
+        "stopped": true,
+        "forced": false
+      }
+    },
+    {
+      "command": "node scripts/diagnostics/rpc-isolated-supervisor.cjs start /tmp/rpc-supervisor-approved.j6AXYj/stage 512k",
+      "result": {
+        "ready": true,
+        "port": 36877,
+        "pid": 63,
+        "selected": "512k"
+      }
+    },
+    {
+      "command": "node scripts/diagnostics/rpc-isolated-supervisor.cjs probe-memory /tmp/rpc-supervisor-approved.j6AXYj/stage",
+      "result": {
+        "synthetic": true
+      }
+    },
+    {
+      "command": "node scripts/diagnostics/rpc-isolated-supervisor.cjs status /tmp/rpc-supervisor-approved.j6AXYj/stage",
+      "result": {
+        "running": false,
+        "port": 36877,
+        "selected": "512k",
+        "lastExit": {
+          "code": 72,
+          "signal": null
+        },
+        "watchdogEvents": []
+      }
+    },
+    {
+      "command": "node scripts/diagnostics/rpc-isolated-supervisor.cjs start /tmp/rpc-supervisor-approved.j6AXYj/stage baseline",
+      "result": {
+        "ready": true,
+        "port": 36877,
+        "pid": 91,
+        "selected": "baseline"
+      }
+    },
+    {
+      "command": "node scripts/diagnostics/rpc-isolated-supervisor.cjs stop /tmp/rpc-supervisor-approved.j6AXYj/stage",
+      "result": {
+        "stopped": true,
+        "forced": false
+      }
+    },
+    {
+      "command": "node scripts/diagnostics/rpc-isolated-supervisor.cjs start /tmp/rpc-supervisor-approved.j6AXYj/stage 512k",
+      "result": {
+        "ready": true,
+        "port": 36877,
+        "pid": 119,
+        "selected": "512k"
+      }
+    },
+    {
+      "command": "node scripts/diagnostics/rpc-isolated-supervisor.cjs crash /tmp/rpc-supervisor-approved.j6AXYj/stage",
+      "result": {
+        "crashed": true
+      }
+    },
+    {
+      "command": "node scripts/diagnostics/rpc-isolated-supervisor.cjs start /tmp/rpc-supervisor-approved.j6AXYj/stage baseline",
+      "result": {
+        "ready": true,
+        "port": 36877,
+        "pid": 140,
+        "selected": "baseline"
+      }
+    },
+    {
+      "command": "node scripts/diagnostics/rpc-isolated-supervisor.cjs probe-supervisor-memory /tmp/rpc-supervisor-approved.j6AXYj/stage",
+      "result": {
+        "synthetic": true,
+        "independentSupervisor": true
+      }
+    },
+    {
+      "command": "node scripts/diagnostics/rpc-isolated-supervisor.cjs status /tmp/rpc-supervisor-approved.j6AXYj/stage",
+      "result": {
+        "running": false,
+        "port": 36877,
+        "selected": "baseline",
+        "lastExit": {
+          "code": 0,
+          "signal": null
+        },
+        "watchdogEvents": [
+          {
+            "rss": 268435457,
+            "limit": 268435456,
+            "synthetic": true,
+            "ownedPid": 140
+          }
+        ]
+      }
+    },
+    {
+      "command": "node scripts/diagnostics/rpc-isolated-supervisor.cjs start /tmp/rpc-supervisor-approved.j6AXYj/stage baseline",
+      "result": {
+        "ready": true,
+        "port": 36877,
+        "pid": 168,
+        "selected": "baseline"
+      }
+    },
+    {
+      "command": "node scripts/diagnostics/rpc-isolated-supervisor.cjs stop /tmp/rpc-supervisor-approved.j6AXYj/stage",
+      "result": {
+        "stopped": true,
+        "forced": false
+      }
+    },
+    {
+      "command": "node scripts/diagnostics/rpc-isolated-supervisor.cjs shutdown /tmp/rpc-supervisor-approved.j6AXYj/stage",
+      "result": {
+        "shutdown": true
+      }
+    }
+  ],
+  "health": {
+    "a1": {
+      "pid": 42,
+      "mode": "baseline",
+      "sha256": "fb0bc4c067951bb01641a66c5260667cc8cf9c7933f74cce9e79654d1ec28fde",
+      "runtime": {
+        "initial": 262144,
+        "minimum": 65536,
+        "maximum": 1073741824
+      },
+      "produced": 0,
+      "canceled": 0,
+      "budgetEnabled": true
+    },
+    "b": {
+      "pid": 63,
+      "mode": "512k",
+      "sha256": "20238f1cd118fcd8e83fc3008245ed8bef5a225a794f3d72d391880c0e0ef888",
+      "runtime": {
+        "initial": 262144,
+        "minimum": 524288,
+        "maximum": 1073741824
+      },
+      "produced": 0,
+      "canceled": 0,
+      "budgetEnabled": true
+    },
+    "a2": {
+      "pid": 91,
+      "mode": "baseline",
+      "sha256": "fb0bc4c067951bb01641a66c5260667cc8cf9c7933f74cce9e79654d1ec28fde",
+      "runtime": {
+        "initial": 262144,
+        "minimum": 65536,
+        "maximum": 1073741824
+      },
+      "produced": 0,
+      "canceled": 0,
+      "budgetEnabled": true
+    }
+  },
+  "transfers": {
+    "bodyA1": {
+      "chunks": 16,
+      "bytes": 1048576
+    },
+    "bodyB": {
+      "chunks": 16,
+      "bytes": 1048576
+    },
+    "bodyA2": {
+      "chunks": 16,
+      "bytes": 1048576
+    }
+  },
+  "activeTransferRejectedOnStop": true,
+  "syntheticMemoryFault": true,
+  "independentSupervisorMemoryFault": true,
+  "hashMismatchRejected": true,
+  "crashRecovery": true,
+  "finalListenerClosed": true,
+  "supervisor": "owned Node child processes; systemd activation unavailable"
+}

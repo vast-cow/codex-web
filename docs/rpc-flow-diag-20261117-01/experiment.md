@@ -1,5 +1,13 @@
 # Isolated RPC minimum-window experiment
 
+## Approved isolation-only follow-up
+
+The user approved the resource-budget plan for further isolated validation only.
+[Budget validation](budget-validation.md) records the implemented scoped limits,
+concurrent-client tests, private kernel-network tests and supervisor rehearsal.
+The live recommendation remains **NO-GO**; no production deployment, restart or
+configuration change was authorized or performed.
+
 Implemented, disabled by default, **not deployed**. No production artifact, daemon,
 listener, environment, or browser profile was changed. This is a host-wide A/B
 candidate, not a bootstrap-specific policy or an approved optimization.
