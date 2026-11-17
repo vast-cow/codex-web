@@ -412,7 +412,15 @@ function ensureElectronLikeProcessContext(): void {
 async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
   const bridgeState = getIpcMainBridgeState();
   const app = Fastify({ logger: false });
-  const websocketServer = new WebSocketServer({ noServer: true });
+  const websocketServer = new WebSocketServer({
+    noServer: true,
+    perMessageDeflate: {
+      // Compress bulk IPC messages without retaining dictionaries between messages.
+      serverNoContextTakeover: true,
+      clientNoContextTakeover: true,
+      threshold: 1024,
+    },
+  });
 
   await app.register(fastifyMultipart, {
     limits: {

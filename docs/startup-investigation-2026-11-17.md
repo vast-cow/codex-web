@@ -151,3 +151,90 @@ Artifacts reside in `/tmp/codex-startup-investigation/`: persistent complete rec
 For review, load `run-N-trace.json` in Chrome Performance. Filter NDJSON for `Network.webSocketFrameSent/Received`; HTTP service traffic appears under `message-port-message` RPC `push/pull/resolve/stream`, not as normal browser fetches. Use summary.json for UUID-to-stream/time correlation. CDP events can be reported late (notably streaming-compiled JS); use embedded network timing, responseReceivedExtraInfo, and loadingFinished, not file order or collection wall time alone.
 
 The smallest missing external evidence is a two-load recording on the user's affected client/network with the same profile/cache/session, plus the equivalent LAN control. Run the harness there, record Tailscale path status at the same time, and compare the same asset identifiers. To split host work from delivery, the deployment operator must additionally record the server's build/process/proxy identity and timing at: WebSocket receive **before** awaiting rendererReady, handler entry/exit, upstream auth/start/headers/body-end/cancel, socket enqueue/send callback (with bufferedAmount), and browser stream/dispatch resolution. Log monotonic time and connection/fetch UUID/pull/stream IDs; omit bodies and credentials. Per-process durations avoid clock-offset errors; browser RTT is only an upper bound on server work. Current captures cannot distinguish upstream-body production, host buffering/event-loop delay, proxy/network throughput, and socket queue time completely.
+
+## Compression implementation and validation follow-up
+
+Implemented against clean checkout `e3a799a82a1ab36a33091856dac699b049c11719` on the existing `main` branch. The production change is limited to `src/server/main.ts`'s IPC WebSocketServer options:
+
+```ts
+perMessageDeflate: {
+  serverNoContextTakeover: true,
+  clientNoContextTakeover: true,
+  threshold: 1024,
+}
+```
+
+The lockfile and the locally installed library both specify `ws` **8.20.0**. The existing `noServer: true` upgrade routing stays in place. All six server send sites use `socket.send(JSON.stringify(...))`, without an override disabling compression. In `ws/lib/websocket.js`, sends default to `compress: true` when the extension is negotiated. In `ws/lib/sender.js`, the 1024-byte threshold is applied when the sending endpoint has no context takeover. Thus server messages below 1 KiB remain uncompressed; bulk catalog and HTTP-service stream messages are compressed. The no-context options reset compression history between messages in each direction, avoiding dependencies on prior catalog messages. They do not change message boundaries or dispose zlib allocations after each message. The browser controls its own outbound compression policy. Other library defaults remain unchanged: zlib defaults and the shared compression concurrency limit of 10. No send-path, timeout, retry, flag, catalog, static-asset, or reconnection policy changes are included.
+
+### Local negotiation and actual frame measurements
+
+Tests instantiated the literal options from the patched constructor using installed `ws`, without loading the upstream application. A noServer HTTP upgrade fixture used `/__backend/ipc`. Node clients and native **Chromium 156.0.8078.4** negotiated:
+
+```http
+Sec-WebSocket-Extensions: permessage-deflate; server_no_context_takeover; client_no_context_takeover
+```
+
+Validation replayed one complete baseline warm catalog (18 messages: start, 16 chunks, end) and all 119 messages from the baseline cold **partial** bootstrap stream. These are the original captured JSON WebSocket messages, in their original boundaries; the catalog was not concatenated before compression. The same installed library sent them once with compression off and once with the patched options. Each received string was checked against the original, including ordering. A parser on the client's TCP socket measured the actual WebSocket frame lengths and RSV1 bits before inflation; handshake bytes, TCP/IP overhead and TLS overhead are excluded. This loopback fixture uses plain WS, so socket data contains the actual compressed WebSocket frames. CDP's decoded `payloadData` lengths were **not** treated as compressed wire bytes.
+
+| Local replay, same decoded messages | Compression off | Patched compression |
+| --- | ---: | ---: |
+| Decoded catalog JSON bytes | 13,731,467 | 13,731,467 |
+| Catalog transport bytes, including WS framing | 13,731,635 | 976,908 |
+| Decoded partial bootstrap JSON-envelope bytes | 8,665,814 | 8,665,814 |
+| Partial bootstrap transport bytes, including WS framing | 8,666,866 | 2,169,438 |
+| Total transport bytes | 22,398,501 | 3,146,346 |
+| Loopback replay elapsed | 125.08 ms | 299.04 ms |
+| Combined fixture process user/system CPU | 105.11 / 21.61 ms | 370.47 / 64.11 ms |
+| Combined fixture process RSS start / sampled peak | 397,729,792 / 426,016,768 bytes | 432,177,152 / 465,436,672 bytes |
+
+These frame measurements represent approximately **92.9% catalog reduction, 75.0% partial-bootstrap reduction, and 86.0% total reduction** with the effective per-message settings. The CPU and RSS figures include both endpoints, JSON checking, and retained baseline fixtures in one Node process; they are single observations, not isolated production-server resource estimates. Compression costs CPU and makes this fast loopback replay slower. It does not establish a WAN startup speedup or show that the complete bootstrap body fits the deadline.
+
+Assertions also checked that sub-threshold messages have RSV1 clear, large messages have RSV1 set, request/reply IDs survive, fresh connections renegotiate, and clients that do not offer compression still work. Native Chromium exercised two successive connections with header/write/close messages, a 1 MiB streamed body, and correlated request IDs. The full application reconnect/reload flow cannot be exercised against the patched deployment without deploying it; its existing shim and handlers are unchanged.
+
+`npm ci --ignore-scripts --no-audit --no-fund`, `npm run build:server`, Prettier on `main.ts`, protocol tests, Chromium interoperability tests, and diff whitespace checks passed. Generated TypeScript build outputs were removed from the working tree. The capture harness remains unchanged.
+
+### Live deployment status and before/after startup comparison
+
+The live URL was probed again with an explicit `permessage-deflate; client_max_window_bits` offer. It returned HTTP 101 **without** `Sec-WebSocket-Extensions`; the patched configuration is not deployed there. Probe time: Unix `1794883800.1257384`. This workspace still has an isolated process view, no deployment process, no configured SSH host access, and no packaged upstream app available for a full local application launch. No deployment/restart was performed. Repeating the live capture now would measure the unpatched deployment, so it is not presented as an after-change run.
+
+| Startup event, navigation-relative seconds | Baseline cold | Baseline warm | Live after patch |
+| --- | ---: | ---: | --- |
+| React render requested | 171.075 | 1.480 | Pending deployment |
+| Catalog transfer 1 start–end | After mount; recording ends during transfer | 4.458–95.725 | Pending |
+| Catalog transfer 2 start–end | Not observed before mount | 104.188–201.542 | Pending |
+| account/read browser completion | 175.610 | 201.902 | Pending |
+| getAuthStatus browser completion | 175.612 | 201.920 | Pending |
+| Bootstrap request | 175.638 | 201.934 | Pending |
+| Bootstrap headers | 176.152 | 202.438 | Pending |
+| Complete bootstrap body | Not received | Not received | Pending |
+| Bootstrap timeout | 235.636 | 261.935 | Pending |
+| Fallback first attempt–last cancellation | 235.665–268.169 | 261.949–294.453 | Pending |
+| Runtime selected | 268.441 | 294.596 | Pending |
+| Routes mounted | 271.101 | 301.983 | Pending |
+
+**Whether bootstrap now succeeds and the 32.6-second fallback delay disappears remains unmeasured.** The baseline connection is remote tailnet access with physical path unclassified; it is not verified as the user's affected WAN or a LAN control. Its approximately 1.1 Mbps endpoint throughput is not substituted for the user's reported external speed.
+
+### Catalog duplication and next candidate
+
+Both complete warm-run `app/list/updated` transfers contain exactly the same ordered **340,741 tokens**, after excluding transfer-envelope IDs and sequence fields. Canonical concatenated-token JSON SHA-256 is `c4847cc21d06133626922e917ab75c588758cf964b5c3be8af18707311d2161d`. This compares full content, not just byte counts. They are duplicate catalog data in this baseline; they are not necessary distinct snapshots. The first catalog may still be required for the new renderer.
+
+If catalog delay remains after compression, the next focused experiment is to suppress unchanged `app/list/updated` notifications **per renderer/connection**, retaining the first snapshot and every changed catalog. Inspect the upstream producer/dispatch contract before implementing it. Do not suppress across new connections merely because a previous renderer received the same data. Smaller frames or fair scheduling may additionally reduce response latency behind an individual frame, but they do not remove the measured duplicate transfer. No catalog behavior is changed by this patch.
+
+### Remaining live measurements and reproduction
+
+1. Deploy the server patch through the host's existing build/service mechanism, recording the deployed commit, process, proxy and restart time. Rollback is the single constructor-options change. Keep served asset hashes, application state, and all other startup policies constant; the original baseline is comparable only while those conditions still match.
+2. Verify the new browser's actual upgrade contains the extension and effective no-context parameters. Capture a fresh-profile cold load and its consecutive warm reload with the existing harness. Use the same Chromium version, account/session and normal cache conditions as the baseline. A fresh output directory supplies a cold profile; reuse the browser context for the second load, as the harness already does:
+
+   ```sh
+   PLAYWRIGHT_MODULE=/tmp/codex-startup-tools/node_modules/playwright \
+   CAPTURE_SECONDS=360 READY_SELECTOR='textarea, [contenteditable="true"]' \
+   node scripts/diagnostics/capture-startup.cjs \
+     https://z170-1.tailddb1d3.ts.net:8214/ /tmp/startup-compressed
+   ```
+
+3. Independently measure compressed frame payload lengths/RSV1 and framing at the server's decrypted WebSocket socket, or use a client packet capture decrypted with that browser's TLS key log. Correlate the same TCP connection and message boundaries with CDP decoded frames. CDP payload lengths alone cannot establish compressed transport volume. Keep compressed payload bytes, WS framing, TLS bytes and decoded sizes distinct.
+4. Correlate each catalog transfer ID/sequence, account request UUID, and bootstrap UUID/pull/readable-stream ID across response generation, socket enqueue, send callback, browser receipt, and bridge resolution. Record socket `bufferedAmount`, handler durations and upstream auth/headers/body-chunk/body-end/cancel timestamps using process-monotonic clocks. A send callback confirms local transport handoff, not browser receipt. This is still required to decide whether auth results were already generated but queued or generated late because initialization awaited catalog delivery. Browser-only completion times do not resolve it.
+5. For bootstrap, compare upstream body chunk/completion timing against corresponding WebSocket chunks and browser body completion. The prompt headers in the baseline do not prove prompt upstream body completion. Record bootstrap success, fallback activation/deadlines, runtime selection and route mount; verify visually usable UI after mount. Sample service CPU/RSS separately from the browser and replay tools.
+6. Label new measurements as affected WAN, a different external path, or LAN control only when verified. Repeat the same pair on the affected client and LAN if a WAN/LAN causal comparison is needed.
+
+Local reproducible validation scripts and evidence are in `/tmp/codex-ws-compression/`: `validate.cjs`, `replay-results.json` (per-frame RSV1/lengths), `browser-interop.cjs`, `browser-interop.json`, and `live-handshake.json`. Run the scripts from the repository root with installed dependencies; the replay uses the preserved baseline `persistent/run-{1,2}.ndjson` files. Browser fixture paths are explicit in its script. These are diagnostic artifacts, not runtime dependencies, and raw catalog/body data remain outside Git.
