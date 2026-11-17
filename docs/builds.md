@@ -12,6 +12,41 @@ wrappers. Nix supplies that variable and continues to run `npm run build`.
 For local rebuilds, keep it pointing to the desired Desktop zip, for example
 inside `nix develop`.
 
+Alternatively, install with pnpm (tested with **pnpm 10.34.9**):
+
+```bash
+HOSTED_CODEX_APP_ZIP=/path/to/desktop.zip pnpm install
+pnpm run server
+```
+
+Ordinary `pnpm install` runs the project preparation/build and the dependency
+scripts approved in `pnpm-workspace.yaml`: `better-sqlite3` for the server,
+`sharp` for asset preparation, and `electron` for the existing Electron development
+commands. Dependency scripts are not enabled globally. npm and Nix workflows
+remain supported; this does not replace the committed npm lockfile or adopt a
+pnpm lockfile.
+
+Do not reuse one `node_modules` directory across package managers. Use a fresh
+checkout or remove the dependency directory before switching, then reinstall
+with the chosen package manager.
+
+Before listening, the server opens an in-memory SQLite database, executes
+`SELECT 1`, and closes it. A missing or incompatible native binding stops startup
+with the original error and Node version. From the project directory, repair the
+binding with the package manager used to install it:
+
+```bash
+pnpm rebuild better-sqlite3
+# For npm installations:
+npm rebuild better-sqlite3
+```
+
+Rebuild after changing Node versions as well. If rebuilding fails, address the
+reported compiler/runtime error and reinstall dependencies with the same package
+manager. Startup never rebuilds automatically or touches application databases.
+`--help` bypasses this check. The in-memory check does not certify access to the
+application's on-disk database or full application readiness.
+
 Desktop extraction, copying local assets, Sharp PWA icon generation, Prettier,
 and patch application now run behind `scripts/prepare-assets.cjs`.
 The existing icon dimensions, padding, white background, PNG format, formatting,

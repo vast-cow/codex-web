@@ -2,6 +2,7 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 const { execFileSync } = require("node:child_process");
+const { createRequire } = require("node:module");
 const {
   hash,
   digest,
@@ -48,7 +49,8 @@ async function prepareAssets({
   inputs.dev = !!process.env.DEV;
   inputs.node = process.versions;
   if (!processAssets) {
-    inputs.tools = { sharp: require("sharp").versions };
+    const sharpRequire = createRequire(require.resolve("sharp-cli/package.json"));
+    inputs.tools = { sharp: sharpRequire("sharp").versions };
     for (const command of ["asar", "sharp", "prettier", "patch"])
       inputs.tools[command] = execFileSync(command, ["--version"], {
         encoding: "utf8",
