@@ -1,0 +1,106 @@
+{
+  "label": "rpc-flow-diag-20261117-01",
+  "hostSession": 802,
+  "browserSession": 1,
+  "stream": 7,
+  "window": 803,
+  "decodedBytes": 7957011,
+  "estimatedBytes": 31861839,
+  "firstSendToLastAckMs": 23268.228664000024,
+  "decodedBytesPerSecond": 341968.9188593403,
+  "creditWaitReportedMs": 23173.118780999648,
+  "creditWaitIntervalMs": 23173.07501200048,
+  "readGapMs": 22990.54286000019,
+  "readGapCreditOverlapMs": 22896.9388760007,
+  "readGapOverlapPercent": 99.59285874818403,
+  "readGapOutsideCreditMs": 93.6039839994919,
+  "creditOutsideReadGapsMs": 276.1361359997827,
+  "writerWait": {
+    "count": 130,
+    "totalMs": 24.900000020861626,
+    "minMs": 0,
+    "medianMs": 0.19999999925494194,
+    "maxMs": 2.800000000745058
+  },
+  "writerEndToAck": {
+    "count": 130,
+    "totalMs": 1.9999999962747097,
+    "minMs": 0.0,
+    "medianMs": 0.0,
+    "maxMs": 0.10000000149011612
+  },
+  "ackToRelease": {
+    "count": 122,
+    "totalMs": 0.7501530002336949,
+    "minMs": 0.004207999969366938,
+    "medianMs": 0.005941000010352582,
+    "maxMs": 0.01429900003131479
+  },
+  "clockBodyIntersection": [
+    249769.33421500225,
+    249814.02788900223
+  ],
+  "clockGlobalIntersection": [
+    249772.35377399926,
+    249810.5822830022
+  ],
+  "timeAtMinimumMs": 1162.077777999919,
+  "minimumAckCount": 5,
+  "timeAtMost128KiBMs": 20022.067699000007,
+  "timeBelowTypicalChunkMs": 22093.71506800005,
+  "ackStatesBelowTypicalChunk": 114,
+  "estimatedChunkHistogram": {
+    "7650": 1,
+    "65796": 10,
+    "174414": 1,
+    "262404": 117,
+    "320547": 1
+  },
+  "sourceHashes": {
+    "host-matched.ndjson": "acc9fbc63f79e0eba006efaae0536fe2c37efc548f736ee26639b63f8e71d471",
+    "window-ack-timing.csv": "c1099548215ab246908ab5860844e560e134ba62442feda8ec744bd405fae174",
+    "browser-diagnostics.ndjson": "2453899e29b5a7d9187c2a8c27a21265f6e59ba5c48c344221b6dce180326de0"
+  },
+  "outboundLowerMs": {
+    "count": 130,
+    "totalMs": 19005.373040177772,
+    "minMs": 4.1439830022573005,
+    "medianMs": 133.15957850037375,
+    "maxMs": 400.50804600003175
+  },
+  "outboundUpperMs": {
+    "count": 130,
+    "totalMs": 24815.550660175184,
+    "minMs": 48.83765700223739,
+    "medianMs": 177.85325250035385,
+    "maxMs": 445.20172000001185
+  },
+  "returnLowerMs": {
+    "count": 130,
+    "totalMs": 510.77476786481566,
+    "minMs": 0,
+    "medianMs": 3.5295664977747947,
+    "maxMs": 21.799327997025102
+  },
+  "returnUpperMs": {
+    "count": 130,
+    "totalMs": 6234.537005813239,
+    "minMs": 32.52229100000113,
+    "medianMs": 48.22324049775489,
+    "maxMs": 66.4930019970052
+  },
+  "nearestReturnLowerMs": {
+    "count": 130,
+    "totalMs": 147.69479099684395,
+    "minMs": 0,
+    "medianMs": 0.0,
+    "maxMs": 21.799327997025102
+  },
+  "nearestReturnUpperMs": {
+    "count": 130,
+    "totalMs": 21420.296105031914,
+    "minMs": 40.09090499847662,
+    "medianMs": 99.23408750112867,
+    "maxMs": 444.99396399850957
+  }
+}
