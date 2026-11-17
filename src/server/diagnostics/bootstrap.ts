@@ -74,12 +74,24 @@ export async function diagnosticFetch(
   const reader = response.body.getReader();
   let sequence = 0,
     totalBytes = 0;
+  let lastReadComplete: number | undefined;
   const body = new ReadableStream<Uint8Array>(
     {
       async pull(controller) {
+        if (
+          process.env.CODEX_RPC_DIAGNOSTICS === "1" &&
+          lastReadComplete !== undefined
+        )
+          diagnostic("upstream-read-gap", {
+            requestId,
+            sequence,
+            gapMs: performance.now() - lastReadComplete,
+          });
         diagnostic("upstream-read-start", { requestId, sequence });
         try {
           const result = await reader.read();
+          if (process.env.CODEX_RPC_DIAGNOSTICS === "1")
+            lastReadComplete = performance.now();
           if (result.done) {
             diagnostic("upstream-end", { requestId, sequence, totalBytes });
             controller.close();

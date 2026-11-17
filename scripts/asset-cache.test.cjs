@@ -18,7 +18,7 @@ test("Desktop preparation reuses immutable inputs, restores live output, and inv
   for (const name of [
     "assets",
     "patches",
-    "scripts",
+    "scripts/diagnostics",
     "src/browser",
     "src/server",
   ])
@@ -32,6 +32,8 @@ test("Desktop preparation reuses immutable inputs, restores live output, and inv
     "scripts/prepare-asar-uncached",
     "scripts/prepare-assets.cjs",
     "scripts/asset-cache.cjs",
+    "scripts/diagnostics/instrument-rpc.cjs",
+    "scripts/diagnostics/rpc-runtime.cjs",
   ])
     await fs.writeFile(path.join(root, name), name);
   let runs = 0;
@@ -73,6 +75,8 @@ test("Desktop preparation reuses immutable inputs, restores live output, and inv
     "assets/icon.png",
     "patches/app.patch",
     "scripts/prepare-asar-uncached",
+    "scripts/diagnostics/instrument-rpc.cjs",
+    "scripts/diagnostics/rpc-runtime.cjs",
     "package-lock.json",
     "app.zip",
   ]) {

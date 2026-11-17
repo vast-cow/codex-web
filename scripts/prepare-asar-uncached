@@ -69,4 +69,6 @@ patch --silent --batch --forward --strip 1 --directory "${ASAR_OUTPUT_DIR}" < pa
 patch --silent --batch --forward --strip 1 --directory "${ASAR_OUTPUT_DIR}" < patches/webview-safe-header-left.patch
 patch --silent --batch --forward --strip 1 --directory "${ASAR_OUTPUT_DIR}" < patches/app-host-json-rpc.patch
 patch --silent --batch --forward --strip 1 --directory "${ASAR_OUTPUT_DIR}" < patches/app-host-browser-windows.patch
+# Install disabled-by-default RPC diagnostics into the private preparation output.
+node scripts/diagnostics/instrument-rpc.cjs "${ASAR_OUTPUT_DIR}"
 rm -rf "${ASAR_OUTPUT_DIR}/node_modules/better-sqlite3"

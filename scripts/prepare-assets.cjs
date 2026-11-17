@@ -36,6 +36,8 @@ async function prepareAssets({
     "scripts/prepare-asar-uncached",
     "scripts/prepare-assets.cjs",
     "scripts/asset-cache.cjs",
+    "scripts/diagnostics/instrument-rpc.cjs",
+    "scripts/diagnostics/rpc-runtime.cjs",
   ].map((file) => path.resolve(root, file)))
     inputs[
       file === path.resolve(root, archive)
