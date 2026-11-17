@@ -83,6 +83,11 @@ nix shell github:0xcaff/codex-web github:0xcaff/codex-web#codex_remote_proxy -c 
 program to use; when run directly in a terminal it will wait for protocol input
 rather than opening an interactive prompt.
 
+## development builds
+
+See [builds and reusable assets](docs/builds.md) for the build flow, cache
+invalidation, force rebuilds, and optional compressed-size reporting.
+
 ## security
 
 run `codex-web` only on trusted networks. treat anyone who can reach the

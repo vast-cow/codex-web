@@ -40,7 +40,7 @@ function run(root, { tty = false, columns = 100, failure, slow = false } = {}) {
       ${slow ? "setTimeout(finish, 350)" : "finish()"};
     };
     const fs = require('node:fs/promises');
-    ${["readFile", "writeFile", "stat", "utimes"].includes(failure) ? `fs.${failure} = async () => { throw new Error('injected ${failure} failure'); };` : ""}
+    ${["readFile", "writeFile", "stat", "utimes"].includes(failure) ? `const original = fs.${failure}; fs.${failure} = async (...args) => { if (String(args[0]).endsWith('example.js') || String(args[0]).endsWith('example.js.gz')) throw new Error('injected ${failure} failure'); return original(...args); };` : ""}
     require(${JSON.stringify(script)}).precompress(${JSON.stringify(root)})
       .catch(error => { console.error(error.message); process.exitCode = 1; })
       .finally(() => { console.error('active timers: ' + active.size); });
@@ -197,4 +197,17 @@ test("CLI accepts a target directory and retains success/failure exit codes", as
     assert.equal(result.status, status);
     assert.doesNotMatch(result.stdout + result.stderr, /\x1b/);
   }
+});
+
+test("unchanged assets bypass compression even when the compressor would fail", async (t) => {
+  const root = await fixture(t);
+  const file = path.join(root, "example.js");
+  await fs.writeFile(file, "let x = 1;");
+  assert.equal(run(root).status, 0);
+  const reused = run(root, { failure: "gzip" });
+  assert.equal(reused.status, 0);
+  assert.match(reused.stdout, /Processed 0 files; skipped 1/);
+  await fs.appendFile(file, "// changed");
+  assert.equal(run(root, { failure: "gzip" }).status, 1);
+  assert.match(run(root).stdout, /Processed 1 files; skipped 0/);
 });

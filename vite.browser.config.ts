@@ -53,6 +53,7 @@ export default defineConfig({
     },
     emptyOutDir: false,
     minify: false,
+    reportCompressedSize: process.env.REPORT_COMPRESSED_SIZE === "1",
     outDir: path.resolve(webviewRoot, "assets"),
     sourcemap: true,
     lib: {
