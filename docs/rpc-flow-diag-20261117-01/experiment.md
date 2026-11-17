@@ -4,6 +4,14 @@ Implemented, disabled by default, **not deployed**. No production artifact, daem
 listener, environment, or browser profile was changed. This is a host-wide A/B
 candidate, not a bootstrap-specific policy or an approved optimization.
 
+## Subsequent guard investigation
+
+The [guard review](guard-review.md) separates estimator credit from measured
+buffering and memory, with [per-test measurements](guard-quantitative.md), longer
+stalls and disconnect validation. The original 1-MiB live-trial stop remains in
+force. The proposed replacement budgets are for separate approval and do not make
+this experiment ready for production cutover.
+
 ## Treatment and runtime invariant
 
 `rpc-window-candidate.cjs SOURCE_ASAR NEW_DESTINATION [baseline|512k]` defaults to

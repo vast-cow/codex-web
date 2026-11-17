@@ -1,0 +1,13 @@
+{
+  "sourceHostHash": "73f93b81152bff48cd27bcebcf27c430fb763e5c7418c67824950f4092ba933d",
+  "coreHashes": {
+    "browser": "86795c4e8060243e75d9952820b17fa09187334ccb979f22e9dfc633e0f18ae7",
+    "baseline": "fb0bc4c067951bb01641a66c5260667cc8cf9c7933f74cce9e79654d1ec28fde",
+    "512k": "20238f1cd118fcd8e83fc3008245ed8bef5a225a794f3d72d391880c0e0ef888"
+  },
+  "runs": 40,
+  "scenarios": 10,
+  "repeats": 2,
+  "order": "AB then BA; fresh Node/Chromium per run",
+  "inputResultsSha256": "8c9d2fab8d1fff4bfd023d80d3d52de98e6f85bb4af99bdafa74d30829d17b4a"
+}

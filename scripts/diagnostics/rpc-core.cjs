@@ -1,5 +1,5 @@
 // Execute only the packaged RPC core; never execute Desktop startup.
-function load(source, side, diagnostic) {
+function extract(source, side) {
   // Execute the actual bundle's self-contained RPC implementation, excluding app startup.
   let core;
   if (side === "host") {
@@ -18,14 +18,20 @@ function load(source, side, diagnostic) {
     );
     core += ";yF();yF();return { Session:BFt, Target:QP, Window:QFt };";
   }
-  return new Function("__codexRpcDiag", "t", core)(diagnostic, (fn) => {
-    let initialized = false;
-    return () => {
-      if (!initialized) {
-        initialized = true;
-        fn();
-      }
-    };
-  });
+  return core;
 }
-module.exports = { load };
+function load(source, side, diagnostic) {
+  return new Function("__codexRpcDiag", "t", extract(source, side))(
+    diagnostic,
+    (fn) => {
+      let initialized = false;
+      return () => {
+        if (!initialized) {
+          initialized = true;
+          fn();
+        }
+      };
+    },
+  );
+}
+module.exports = { load, extract };
