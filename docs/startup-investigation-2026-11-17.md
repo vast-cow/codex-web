@@ -2,6 +2,8 @@
 
 ## Scope and outcome
 
+**Latest live check (2026-11-17 03:42–03:47 UTC): compression now negotiates, both complete bootstrap responses succeed, and neither load activates the fallback. Routes mount at 181.132 seconds cold and 43.387 seconds warm.** See [Live deployment verification follow-up](#live-deployment-verification-follow-up) for measurements and limits. Authenticated deployment-host access remains unavailable; the running revision and deployment procedure are unverified. Earlier deployment/compression statements below describe the earlier recordings.
+
 Measured `https://z170-1.tailddb1d3.ts.net:8214/` without changing application behavior. The deployment is reachable. The approximately 32.6-second post-bootstrap gap is reproduced: the fallback Statsig SDK waits for **three 10-second initialization attempts and 0.5/2-second retry delays**. It then becomes ready without usable evaluations, selects the default runtime, and mounts routes. The existing bootstrap retry patch does not remove these SDK retries.
 
 The measured connection also delivers large HTTP and WebSocket payloads slowly. Bootstrap headers arrive quickly, but a multi-megabyte streamed body misses its deadline. A warm reload exposes large, repeated app-catalog notifications on the same socket, delaying other startup responses even with cached JavaScript. These are separate, observable contributors; a single timeout change does not fix all of them.
@@ -238,3 +240,111 @@ If catalog delay remains after compression, the next focused experiment is to su
 6. Label new measurements as affected WAN, a different external path, or LAN control only when verified. Repeat the same pair on the affected client and LAN if a WAN/LAN causal comparison is needed.
 
 Local reproducible validation scripts and evidence are in `/tmp/codex-ws-compression/`: `validate.cjs`, `replay-results.json` (per-frame RSV1/lengths), `browser-interop.cjs`, `browser-interop.json`, and `live-handshake.json`. Run the scripts from the repository root with installed dependencies; the replay uses the preserved baseline `persistent/run-{1,2}.ndjson` files. Browser fixture paths are explicit in its script. These are diagnostic artifacts, not runtime dependencies, and raw catalog/body data remain outside Git.
+
+## Live deployment verification follow-up
+
+### Deployment access and running build
+
+This follow-up started from clean checkout `a6db17ceb40de8219775fc0300c942b59c93af60`, on the existing `investigation-20261117-2` branch. That proves the inspection source contains the requested patch, not that the host runs this revision.
+
+The workspace is still `CFFV5`, not `z170-1`. DNS resolves the endpoint to `100.71.85.42`; its route is still via `192.168.192.1` on `eth0`. TCP ports 22 and 8214 are reachable. SSH advertises OpenSSH 9.9, but the following read-only access attempt exits 255:
+
+```sh
+ssh -v -o BatchMode=yes -o ConnectTimeout=8 \
+  -o UserKnownHostsFile=/tmp/codex-deploy-known-hosts \
+  -o StrictHostKeyChecking=accept-new root@z170-1.tailddb1d3.ts.net true
+# Permission denied (publickey,gssapi-keyex,gssapi-with-mic,password).
+```
+
+The probe actually used `/tmp/codex-deploy-known-hosts` for its temporary host-key record. No `/root/.ssh` directory, configured deployment account/key, SSH agent, or Kerberos credential is available. `root` was the workspace's default account, not an independently established deployment account. The process namespace contains no deployment service; Tailscale CLI is unavailable. Repository inspection found generic npm/Nix build/launch instructions, but no host-specific deployment workflow, service unit, release directory, or rollback procedure. No deployment tool with authenticated host execution is available in this session.
+
+| Required deployment fact | Result |
+| --- | --- |
+| Previous running Git revision | Unknown; earlier live handshake lacked compression |
+| Current running Git revision | Unknown; effective compression options now match the patch |
+| Service name, PID, execution/build directory, proxy configuration | Inaccessible without authenticated host execution |
+| Build/restart/deployment commands executed | None |
+| Existing rollback command/release | Unknown; must be discovered on the host |
+
+**The endpoint changed since the earlier probe, independently of this follow-up.** The live extension proves compatible transport configuration is active on this connection path. It does not identify a commit, prove the 1024-byte threshold, or establish that no other server changes were deployed. Rebuilding the local checkout would not establish the running host's build. No speculative restart, rollback, or catalog modification was attempted.
+
+### Fresh live browser negotiation
+
+At `2026-11-17T03:42:26.108Z`, a fresh native Chromium `156.0.8078.4` browser/profile loaded the target URL and opened `wss://z170-1.tailddb1d3.ts.net:8214/__backend/ipc`. CDP captured the actual browser request and response:
+
+```http
+Sec-WebSocket-Extensions: permessage-deflate; client_max_window_bits
+
+HTTP/1.1 101 Switching Protocols
+Upgrade: websocket
+Connection: Upgrade
+Sec-WebSocket-Extensions: permessage-deflate; server_no_context_takeover; client_no_context_takeover
+```
+
+Thus the live browser connection negotiates `permessage-deflate`, with compression context reset in both directions and no explicit window-bit parameter in the response (default window size). A separate direct TLS upgrade at `03:42:18.056 UTC` produced the same extension response. The startup captures independently confirm the extension on their fresh IPC upgrades at cold +8.423 and warm +0.324 seconds. This is live endpoint evidence, not the earlier loopback fixture. Frame RSV1/compressed lengths were not captured on these TLS connections; byte-level compression use for individual live messages remains unmeasured.
+
+### Conditions and before/after observations
+
+Used the unchanged `scripts/diagnostics/capture-startup.cjs`, the same Chromium executable/version, 1440×1000 headless viewport, URL, workspace, remote tailnet route, server-provided authenticated account, normal cache, and no throttling as the earlier persistent pair. A fresh dedicated profile supplies the cold load, followed by a normal reload in the same browser/context/profile; the baseline used its own fresh dedicated profile followed by its reload. No competing investigation download ran during this pair. The readiness selector was `textarea, [contenteditable="true"]`, followed by 15 seconds, with screenshots and explicit route-mount logs checked for both runs.
+
+**The user's affected WAN path was not tested.** These are remote tailnet measurements with physical path unclassified. Tailscale direct/relay status, network capacity stability and the user's client/profile cannot be verified here. Software, asset content, cache procedure and workspace route match the baseline, but host/application state and backend change inventory are uncontrolled. In particular, the baseline's two large catalogs are absent now. This is an observational comparison with the earlier baseline, not an isolated estimate of compression's causal speedup. A controlled uncompressed baseline on the current host state was unavailable before this follow-up because the endpoint already negotiated compression and host access was unavailable.
+
+Cache-body SHA-256 checks match the baseline for entry JS, preload, app-shared and app-initial. In particular, app-initial remains `662b23e65e264082798da83334cc219f72f5141ded3b282723b7b19988e1a2e0`, preload `1b08aa2d5c7fa0fb35687a602e59e86ed1dcec1e120dbac774353683ad498fd4`, and app-shared's 12,152,991-byte body is `8370d130013537f41c3431c9b60a2c1e30d7369c2150fea1416c3eb6ff34a439`. Bodies were located in Chromium disk-cache entries by their known prefix and hashed over their exact original body lengths; cache metadata was excluded. Preload's new last-modified time alone would not have established equality.
+
+All table times are seconds from the first top-level navigation request. New cold origin is Unix `1794886947.990330`; warm origin is `1794887161.454378`.
+
+| Event | Earlier cold | Earlier warm | Live cold | Live warm |
+| --- | ---: | ---: | ---: | ---: |
+| Shared JS complete | 72.541 | 0.278 | 72.348 | 0.321 |
+| Initial JS complete | 146.560 | 0.932 | 135.767 | 0.932 |
+| React root render requested | 171.075 | 1.480 | 137.457 | 1.583 |
+| Catalog 1 start–end | After mount; incomplete | 4.458–95.725 | Not observed | Not observed |
+| Catalog 2 start–end | Not observed before mount | 104.188–201.542 | Not observed | Not observed |
+| account/read completion | 175.610 | 201.902 | 147.301 | 11.504 |
+| getAuthStatus completion | 175.612 | 201.920 | 147.301 | 11.505 |
+| Bootstrap request | 175.638 | 201.934 | 147.317 | 11.516 |
+| Bootstrap headers | 176.152 | 202.438 | 147.855 | 11.993 |
+| Bootstrap first body write | 176.153 | After headers | 147.858 | 11.993 |
+| Bootstrap last body write / stream close | Incomplete | Incomplete | 168.297 / 168.297 | 32.618 / 32.619 |
+| Bootstrap deadline timeout | 235.636 | 261.935 | None | None |
+| Evaluations published Ready | 268.393 | Before runtime selection | 168.606 | 32.860 |
+| Fallback first attempt–last cancellation | 235.665–268.169 | 261.949–294.453 | None | None |
+| Runtime selection | 268.441, default | 294.596, default | 168.776, primary | 33.024, primary |
+| Routes mounted | 271.101 | 301.983 | 181.132 | 43.387 |
+
+Observed route-mount time decreases by 89.969 seconds cold and 258.596 seconds warm relative to the earlier pair, subject to the state/catalog confounds above. No bootstrap timeout logs or fallback `https://ab.chatgpt.com/v1/initialize` fetches occur in either complete capture. The approximately 32.6-second fallback interval is absent in these runs; this does not establish it is eliminated for every client or network.
+
+### Complete live bootstrap receipt and processing
+
+| Evidence | Cold | Warm |
+| --- | --- | --- |
+| Fetch UUID | `bf9afb9b-f2a5-43f8-aa56-001761c5448a` | `77298bf7-88fd-4ba0-bc6b-180e8a76d6e9` |
+| Response pull / readable-stream ID | 17 / 7 | 17 / 10 |
+| Request-to-stream-close | 20.980 s | 21.103 s |
+| Complete decoded body | 7,932,274 bytes | 7,932,272 bytes |
+| Body SHA-256 | `b39f616009a8529338123a9c9916ac4515e943d333af9ecda86c11a820a0d710` | `7f9572f334018eb150c987f8441eca7ff09c5562d892d13b25dfc7b12b2fd263` |
+| Body stream JSON-envelope bytes, including close | 10,593,071 | 10,594,088 |
+
+For each run, the pull-17 response identifies its readable stream. All browser-received stream writes were base64-decoded and concatenated in order through explicit `close`. Both complete outer JSON documents parse, and their `statsigPayload` strings also parse as JSON containing **1,247 feature gates, 2,377 dynamic configs and 481 layer configs**. Browser logs then publish Ready evaluations and choose `codex-primary-runtime` with source `statsig-layer`, followed by route mounting and a visible composer. This validates full reception and application processing beyond the earlier incomplete replay. Cancellation messages at cold +169.198 and warm +33.388 are cleanup after completion, not deadline evidence; the original timeout must not be inferred from a cancel alone.
+
+Bootstrap response metadata records `statusText: OK`, `content-type: application/json`, upstream `content-encoding: br`, and `transfer-encoding: chunked`. Cold upstream request ID is `bca8208b-0272-47bc-b2dc-38f9083b408f`; warm upstream request ID is `0a42e664-0b8b-4b7d-a45c-fec274f5d96b`; full headers are retained in the raw capture. Upstream Brotli headers describe upstream encoding; browser bridge body bytes above are decoded. Header receipt does not timestamp upstream body completion.
+
+### Transfer volume, resources and remaining delay
+
+The byte counts above are actual **browser-received decoded bodies and JSON envelopes**, measured from CDP payload strings with UTF-8 byte lengths and decoded base64 body lengths. They are not compressed wire bytes. Actual large-script HTTP transfer counts from CDP `Network.loadingFinished.encodedDataLength` are 12,153,306 and 18,311,442 bytes cold, including HTTP headers. Neither large script has Content-Encoding. Warm responses revalidate with actual status 304 and 246/247 encoded bytes, rather than redelivering the large bodies. There is no live server socket instrumentation or TLS-decrypted packet capture here, so actual compressed WebSocket transport bytes, framing and TLS overhead remain unavailable; earlier replay reductions cannot substitute for them.
+
+No `codex-host-chunked-message-v1` catalog transfers or `app/list/updated` notifications are present anywhere in either new recording, including its post-mount window. The earlier catalog intervals and byte counts therefore have no corresponding new transfer to compare. Their disappearance requires host-side producer/cache/deployment investigation before attributing warm improvement entirely to transport compression. No notification suppression was implemented in this task.
+
+There is still substantial cold static-delivery delay (135.767 seconds until initial JS completes). Warm React-to-runtime selection takes 31.441 seconds: initial remote-control/config RPCs wait about nine seconds, bootstrap then takes 21.103 seconds, and runtime-to-route mount takes another 10.363 seconds. Large `shared-object-updated` messages for `statsig_evaluations` complete at cold +146.956/+177.896 (5,972,688/5,974,406 decoded JSON bytes), and warm +11.186/+41.580 (5,974,406/5,974,404 bytes). Their receipt precedes initial RPC completions and post-bootstrap mount work. This supports further investigation of repeated large evaluation snapshots on the shared bridge, but does not establish server generation time or queue ordering.
+
+Initial cold account/read UUID `4ce85d43-cd18-4163-a0fe-732f90ea7598` and getAuthStatus UUID `87c926d5-9c81-47f3-843e-1a245d57c290` each complete in a browser-reported 57 ms; warm equivalents `ae0ff197-e58c-4a8e-b6a1-7f60bfdcf089` and `18405f20-72b5-4a12-bd0c-ec14f2ece606` each take 65 ms. These durations are browser request/response measurements, not host processing durations. Host CPU/RSS, host response-generation/enqueue/send progress, and upstream body-end timestamps cannot be measured without host execution. This workspace's CPU/RSS would measure the investigator, so it is not reported as deployment resource usage.
+
+### Remaining deployment and validation steps
+
+1. Provide this task an authenticated deployment-host execution capability: the correct deployment account plus its existing SSH identity/agent or an existing connected host terminal, with permission to inspect and use the current service/build mechanism. Network reachability alone is already working. Obtain the operator's existing deployment/rollback instructions if they are outside the host checkout.
+2. On that host, identify the port-8214 listener and TLS proxy, service manager/unit, PID, `/proc/PID/cwd`, command/executable and loaded build path. Record the live source/build revision and artifact hashes, compare its constructor options with `a6db17c`, and discover the existing previous-release rollback command before changing the service. Generic `npm run build:server` emits TypeScript JS; `default.nix` also defines a packaged build. Neither identifies which procedure this host uses.
+3. If the actual running build lacks the requested patch, apply it through that discovered workflow on the current deployment branch, build the server, restart the existing service, and verify the new PID uses the intended artifact. If already equivalent, record that evidence without an unnecessary redeployment. Record previous/resulting revisions, exact commands and rollback procedure; these facts remain unknown here.
+4. Explain the missing catalog notifications and collect host CPU/RSS alongside request-correlated generation, queue insertion, `bufferedAmount`, local send progress and explicit browser receipt. For bootstrap correlate the UUID, pull and stream IDs above with upstream body completion and bridge delivery. Preserve credentials and bodies outside diagnostic logs. This distinguishes queued responses from initialization dependencies and upstream body delay.
+5. Record actual compressed live frame lengths/RSV1 at the decrypted server socket or from a browser TLS-key-log/decrypted packet capture. Repeat the unchanged two-load harness on the user's affected WAN client/profile/path, with matching cache conditions; obtain a contemporaneous pre-change comparison through the established deployment/rollback procedure if needed. Then decide separately whether catalog duplication, evaluation snapshots, or uncompressed static assets warrant the next patch.
+
+New evidence is under `/tmp/codex-live-deployment-check/`: `browser-handshake.json`, `raw-handshake.json`, `asset-hashes.json`, `details.json`, analysis helpers, and `startup/run-{1,2}.{ndjson,png}` with page snapshots and full traces. Raw headers/bodies and profiles contain authenticated data and remain outside Git. The capture harness exited successfully for both loads; both screenshots show the mounted application and composer. The remaining deployment and affected-WAN claims are explicitly unverified.
