@@ -1,3 +1,4 @@
+import { diagnosticFetch } from "../diagnostics/bootstrap";
 import { Readable, Writable } from "node:stream";
 import type { ReadableStream } from "node:stream/web";
 
@@ -128,7 +129,7 @@ export class NetRequest extends Writable {
     this.chunks.length = 0;
     const redirect = this.options.redirect ?? "follow";
     for (let redirects = 0; !this.destroyed; redirects++) {
-      const result = await globalThis.fetch(url, {
+      const result = await diagnosticFetch(url, {
         method,
         headers: this.headers,
         body,

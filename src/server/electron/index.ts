@@ -1,4 +1,5 @@
 import { inspect } from "node:util";
+import { diagnosticFetch } from "../diagnostics/bootstrap";
 import { NetRequest } from "./net-request";
 
 type StubFunction = (...args: unknown[]) => unknown;
@@ -805,7 +806,7 @@ const net = {
   async fetch(input: string | URL, init?: RequestInit): Promise<Response> {
     // log("net.fetch", [input, init]);
     if (typeof globalThis.fetch === "function") {
-      return globalThis.fetch(input as URL | RequestInfo, init);
+      return diagnosticFetch(input, init);
     }
     return new Response("", { status: 204 });
   },

@@ -16,8 +16,15 @@ import { WebSocket, WebSocketServer } from "ws";
 import Fastify from "fastify";
 import fastifyMultipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
+import {
+  createBootstrapSender,
+  installBootstrapFetchDiagnostics,
+  withBootstrapRequest,
+} from "./diagnostics/bootstrap";
 import { staticAssetDelivery } from "./static-assets";
 import { installModuleAliasHook } from "./module";
+
+installBootstrapFetchDiagnostics();
 
 type ServerOptions = {
   host: string;
@@ -514,6 +521,7 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
   };
 
   websocketServer.on("connection", (socket) => {
+    const sendToBrowser = createBootstrapSender(socket);
     let rendererWindow: RendererWindow | undefined;
     // Each tab is a real registered app view, with its own IPC client and ownership.
     const rendererReady = rendererWindowFactory
@@ -601,7 +609,7 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
             portId,
             (message) => {
               if (socket.readyState === WebSocket.OPEN) {
-                socket.send(JSON.stringify(message));
+                sendToBrowser(message);
               }
             },
             () => messagePorts.delete(portId),
@@ -615,7 +623,9 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
       }
 
       if (message.type === "message-port-message") {
-        messagePorts.get(message.portId)?.receiveMessage(message.data);
+        withBootstrapRequest(message, () =>
+          messagePorts.get(message.portId)?.receiveMessage(message.data),
+        );
         return;
       }
 

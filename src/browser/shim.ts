@@ -149,6 +149,7 @@ const pendingDirectoryEntries = new Map<
 >();
 const rendererListeners = new Map<string, Set<IpcListener>>();
 const messagePorts = new Map<string, MessagePort>();
+let latestBootstrapTrace: object | undefined;
 
 function unimplemented(method: string): never {
   debugger;
@@ -253,9 +254,45 @@ function ensureSocket(): void {
     flushOutboundQueue();
   });
   socket.addEventListener("message", (event) => {
+    const receivedBrowserMs = performance.now();
     try {
-      const message = JSON.parse(String(event.data)) as MainToRendererMessage;
+      const parsed = JSON.parse(String(event.data));
+      if (parsed.type === "bootstrap-clock") {
+        socket?.send(
+          JSON.stringify({
+            type: "bootstrap-clock-reply",
+            probeId: parsed.probeId,
+            browserMs: performance.now(),
+            timeOrigin: performance.timeOrigin,
+          }),
+        );
+        return;
+      }
+      const message = parsed as MainToRendererMessage;
+      const trace = (
+        message as MainToRendererMessage & { bootstrapTrace?: object }
+      ).bootstrapTrace;
+      if (trace) latestBootstrapTrace = trace;
+      if (trace)
+        console.info(
+          "[bootstrap-delivery]",
+          JSON.stringify({
+            event: "browser-receipt",
+            browserMs: receivedBrowserMs,
+            timeOrigin: performance.timeOrigin,
+            ...trace,
+          }),
+        );
       handleIncomingMessage(message);
+      if (trace)
+        console.info(
+          "[bootstrap-delivery]",
+          JSON.stringify({
+            event: "browser-dispatched",
+            browserMs: performance.now(),
+            ...trace,
+          }),
+        );
     } catch (error) {
       console.error(
         "[electron-stub] failed to parse IPC bridge message",
@@ -284,6 +321,35 @@ function ensureSocket(): void {
 }
 
 function enqueueMessage(message: RendererToMainMessage): void {
+  if (latestBootstrapTrace && message.type === "ipc-renderer-send") {
+    for (const arg of message.args) {
+      const value = arg as {
+        type?: string;
+        key?: string;
+        value?: { payload?: unknown };
+        message?: string;
+      } | null;
+      const event =
+        value?.type === "shared-object-set" &&
+        value.key === "statsig_evaluations" &&
+        value.value?.payload
+          ? "evaluations-published"
+          : value?.type === "log-message" &&
+              value.message?.includes("app routes mounted after")
+            ? "routes-mounted"
+            : undefined;
+      if (event)
+        console.info(
+          "[bootstrap-delivery]",
+          JSON.stringify({
+            ...latestBootstrapTrace,
+            event,
+            browserMs: performance.now(),
+            correlation: "latest-observed-bootstrap",
+          }),
+        );
+    }
+  }
   outboundQueue.push(message);
   ensureSocket();
   flushOutboundQueue();
