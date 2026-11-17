@@ -57,6 +57,8 @@ patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-sta
 # Use the existing Statsig fallback after one failed bootstrap request instead
 # of keeping the browser on the startup screen through six timeout attempts.
 patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-statsig-bootstrap-retry.patch
+# Allow up to 60 seconds for the authenticated post-login Statsig bootstrap.
+patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-statsig-bootstrap-timeout.patch
 patch --batch --forward --strip 1 --directory scratch/asar < patches/webview-prompt-search-param.patch
 patch --batch --forward --strip 1 --directory scratch/asar < patches/sentry-disable-shell.patch
 patch --batch --forward --strip 1 --directory scratch/asar < patches/sentry-disable-webview.patch
