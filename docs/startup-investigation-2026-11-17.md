@@ -2,6 +2,8 @@
 
 ## Scope and outcome
 
+**Latest recording analysis:** the warm bootstrap independently takes **21.103 s**, including **20.626 s** waiting for its complete streamed body, the longest remaining dependency. Current catalogs follow `app/installed` → `app/read` with a populated lifecycle gate; no large catalog broadcasts occur in the captured windows. See [Warm dependency and catalog analysis](#warm-dependency-and-catalog-analysis-of-existing-recordings) for the complete 43.387-second accounting, extraction controls, static-delivery evidence and prioritized measurement.
+
 **Latest live check (2026-11-17 03:42–03:47 UTC): compression now negotiates, both complete bootstrap responses succeed, and neither load activates the fallback. Routes mount at 181.132 seconds cold and 43.387 seconds warm.** See [Live deployment verification follow-up](#live-deployment-verification-follow-up) for measurements and limits. Authenticated deployment-host access remains unavailable; the running revision and deployment procedure are unverified. Earlier deployment/compression statements below describe the earlier recordings.
 
 Measured `https://z170-1.tailddb1d3.ts.net:8214/` without changing application behavior. The deployment is reachable. The approximately 32.6-second post-bootstrap gap is reproduced: the fallback Statsig SDK waits for **three 10-second initialization attempts and 0.5/2-second retry delays**. It then becomes ready without usable evaluations, selects the default runtime, and mounts routes. The existing bootstrap retry patch does not remove these SDK retries.
@@ -348,3 +350,121 @@ Initial cold account/read UUID `4ce85d43-cd18-4163-a0fe-732f90ea7598` and getAut
 5. Record actual compressed live frame lengths/RSV1 at the decrypted server socket or from a browser TLS-key-log/decrypted packet capture. Repeat the unchanged two-load harness on the user's affected WAN client/profile/path, with matching cache conditions; obtain a contemporaneous pre-change comparison through the established deployment/rollback procedure if needed. Then decide separately whether catalog duplication, evaluation snapshots, or uncompressed static assets warrant the next patch.
 
 New evidence is under `/tmp/codex-live-deployment-check/`: `browser-handshake.json`, `raw-handshake.json`, `asset-hashes.json`, `details.json`, analysis helpers, and `startup/run-{1,2}.{ndjson,png}` with page snapshots and full traces. Raw headers/bodies and profiles contain authenticated data and remain outside Git. The capture harness exited successfully for both loads; both screenshots show the mounted application and composer. The remaining deployment and affected-WAN claims are explicitly unverified.
+
+## Warm dependency and catalog analysis of existing recordings
+
+This analysis reuses the live and persistent baseline NDJSON, page Resource Timing snapshots and full traces listed above; no new navigation or deployment was performed. It supersedes the earlier *candidate* recommendation to suppress duplicate catalogs: the current request path differs, and no current duplicate catalog has been observed.
+
+### Complete 43.387-second warm timeline
+
+Origin: first top-level `Network.requestWillBeSent`, CDP monotonic **6514.566402**, Unix **1794887161.454378**. Times below subtract that origin, rounded to milliseconds. Log events timestamp browser emission, not host execution. Concurrent operations appear on separate rows, not as additive durations.
+
+| Navigation-relative seconds | Event / correlation |
+| --- | --- |
+| 0 | Navigation request |
+| 0.169–0.321 | Shared JS revalidation; actual HTTP 304, 246 header bytes |
+| 0.324 | IPC WebSocket upgraded with permessage-deflate |
+| 0.679–0.932 | Initial JS revalidation; actual HTTP 304, 247 header bytes |
+| 1.583 | React root render requested |
+| 2.075 | Subscribe to `statsig_evaluations`, invoke `ipc_bridge_4` |
+| 2.077 / 2.078 | Initial `remoteControl/status/read` / `config/read` dispatched; UUIDs `d85cb8ca-c8a8-414a-adae-6af2729fdb89` / `622101cc-5c43-4439-b151-8f448ce2bda4`; browser queue wait 0 ms |
+| 11.186 | Initial large `statsig_evaluations` update received |
+| 11.395 | Subscription invoke `ipc_bridge_4` resolves |
+| 11.426 | Both initial RPC completion logs; durations 9,349 / 9,348 ms |
+| 11.436–11.477 | Second `config/read` dispatch-to-completion, 41 ms |
+| 11.439 | `account/read` and `getAuthStatus` dispatched concurrently; UUIDs `ae0ff197-e58c-4a8e-b6a1-7f60bfdcf089` / `18405f20-72b5-4a12-bd0c-ec14f2ece606` |
+| 11.504 / 11.505 | Account/auth completion logs, 65 ms each; received results +11.503894 / +11.504431 identify authenticated ChatGPT account/method |
+| 11.516 | POST bootstrap fetch `77298bf7-88fd-4ba0-bc6b-180e8a76d6e9` |
+| 11.993 | Pull 17 response supplies headers and readable stream 10; OK, upstream `content-encoding: br` |
+| 11.993294 | First stream-10 body write |
+| 32.618162 | Last stream-10 body write |
+| 32.618699 | Explicit stream close: complete 7,932,272-byte decoded outer JSON body |
+| 32.619–32.860 | Body consumption/JSON decoding/SDK initialization boundary; no individual JSON-parse start/end markers. Complete outer body and nested `statsigPayload` parse offline; Ready log proves application processing by +32.860 |
+| 32.860 | Evaluations published Ready |
+| 32.952 | Renderer sends `shared-object-set` for the large evaluations snapshot |
+| 33.024 | `codex-primary-runtime` selected, source `statsig-layer` |
+| 33.206 / 33.417 | Further config reads dispatched (durable/local respectively); completion logs +41.814 / +41.854, durations 8,608 / 8,438 ms |
+| 41.580 | Large evaluations snapshot echoed to browser |
+| 41.827–41.829 | Two further account/auth pairs dispatched; completions +42.381–42.384 (554–555 ms) |
+| 42.277–42.813 | Another config read (536 ms) |
+| 43.387 | Routes mounted; diagnostic says `after 43388ms` |
+
+**Warm bootstrap is calculated from warm events independently:** request-to-close **21.103 s**, request-to-headers **0.477 s**, first-to-last body write **20.625 s**, headers-to-close **20.626 s**. The cold request-to-close is separately **20.980 s**. Neither duration is inferred from the other. Close-to-Ready is **0.241 s**, Ready-to-runtime **0.164 s**, runtime-to-mount **10.363 s**. No fallback initialization request or bootstrap deadline fires.
+
+The following nonoverlapping accounting sums to **43.387 seconds**. RunTask measurements use renderer main PID/TID 121, trace microseconds converted to CDP seconds; tasks crossing a boundary contribute only their overlapping duration. RunTask includes browser work beyond application JavaScript and is not a CPU sample or host measurement.
+
+| Interval | Duration | Blocking operation and evidence/classification |
+| --- | ---: | --- |
+| Navigation → React request | 1.583 s | Asset revalidation, startup execution; about 1.007 s main-thread RunTasks, maximum task 223 ms. Cache responses complete by +0.932 |
+| React request → initial RPC dispatch | 0.494 s | Provider/subscription setup and scheduling; 0.061 s RunTasks. Exact remaining scheduling dependency uninstrumented |
+| Initial RPC dispatch → replies | 9.349 s | Waiting for bridge operations, overlapping initial evaluation-snapshot delivery. Only 0.494 s RunTasks, maximum 258 ms; not continuous browser execution. Snapshot arrives +11.186, invoke/replies follow. Host work versus queue/network delay cannot be separated |
+| Replies → bootstrap request | 0.090 s | Config/auth dependency and browser scheduling; account/auth run concurrently, not two sequential 65-ms waits |
+| Bootstrap request → headers | 0.477 s | Waiting for HTTP-service response; upstream work, round trip and bridge scheduling unresolved; 0.053 s RunTasks |
+| Headers → complete body | **20.626 s** | **Longest blocking interval: streamed data delivery/body consumption.** Writes continue throughout; 1.011 s RunTasks, maximum 36 ms. Complete-body `fetchJson` dependency prevents Statsig readiness. Upstream production versus host/network delivery remains unresolved |
+| Close → primary runtime | 0.405 s | Browser processing and initialization: 0.241 s to Ready plus 0.164 s to selection. 0.405 s overlapping RunTasks; tasks at +32.624 (101 ms) and +32.726 (660 ms, extends past selection). Cannot assign all time to JSON parsing |
+| Runtime → first subsequent config completion | 8.790 s | Waiting for bridge/config operations overlapping snapshot publication/echo; 1.292 s RunTasks (includes tail of 660-ms task). Echo received +41.580, config completes +41.814. Ordering supports a delivery/queue hypothesis, not proof that snapshot acknowledgement gates mounting |
+| Config completion → mount | 1.573 s | Further concurrent account/config work and render/route setup; 0.764 s RunTasks, maximum 264 ms. No direct route-prerequisite span identifies the final promise |
+
+Bootstrap is approximately **48.6%** of warm startup including its header wait. Early and late snapshot transfers are outside that bootstrap interval; the outgoing snapshot at +32.952 and incoming echo at +41.580 overlap runtime/config work. Do not add snapshot wait times to these already inclusive intervals. CDP timestamps a complete WebSocket message, not the start of its transport delivery; there are no chunk timestamps for either large evaluation message. These are operation waits with observed delivery, **not demonstrated 9- or 10-second timers**. The trace records a 60-second bootstrap deadline installed at +11.513, but it does not expire during the successful fetch. Existing timer events do not establish a timer as the gate for either surrounding wait.
+
+Byte-count correction to the earlier snapshot discussion: its 5,972,688/5,974,406 cold and 5,974,406/5,974,404 warm counts are Unicode string lengths, not UTF-8 bytes. Recounting complete received CDP `payloadData` with UTF-8 gives **6,424,126 / 6,425,846 bytes cold**, **6,425,846 / 6,425,844 bytes warm**. The warm outgoing set is 6,425,874 UTF-8 bytes. These remain decoded JSON-envelope sizes, not compressed transport sizes. Bootstrap base64-envelope and decoded-body counts above are unchanged.
+
+### Catalogs: absent broadcasts and an observed alternative request path
+
+Applied the **same extraction** to all four complete recording files: parse every received/sent CDP WebSocket JSON payload across all sockets (including top-level arrays for pubsub); examine direct `mcp-notification`/RPC objects; group `codex-host-chunked-message-v1` by transfer ID, validate sequence and start/end, and assemble object/array/key/value/string tokens using the served `app-shared` assembler's rules. Correlate request UUIDs with received results, not just outgoing completion logs. Raw substring checks are a supplementary cross-check, not the only detector.
+
+The positive control reconstructs **two complete baseline warm `app/list/updated` messages, each 5,016 catalog entries / 340,741 tokens**, at +4.458–95.725 and +104.188–201.542; their previously measured identical token hash is retained above. It also detects an incomplete third transfer starting +335.256; baseline cold has an incomplete transfer starting +297.621. Both partial token streams identify `mcp-notification`, host `local`, method `app/list/updated`. The current files contain **zero chunk envelopes, zero direct or reconstructed `app/list/updated` notifications**, including after route mounting. Compression cannot conceal them from CDP's inflated payloads.
+
+| Recording | Observable catalog request/result/subscription path | Last recorded WS frame / post-mount coverage |
+| --- | --- | --- |
+| Baseline cold | `app/list` +283.119, cursor null, limit 1000, forceRefetch false; no complete corresponding result before capture end. `app_notifications` subscribe +287.109, acknowledged +287.248, recovered false | +313.701 / 42.600 s |
+| Baseline warm | Early two broadcasts precede this renderer's explicit `app/list` +319.062 with the same parameters; no complete corresponding result before end. Subscription +319.060, acknowledged +319.215, recovered false; third catalog begins +335.256 | +357.313 / 55.330 s |
+| Current cold | `app/installed` +182.673 → result +184.166, 10 apps; `app/read` +184.297 → result +185.422, 10 apps, zero missing IDs. Subscription +184.839 → acknowledgement +185.019, recovered false | +204.192 / 23.060 s |
+| Current warm | `app/installed` +45.278 → result +46.076, 10 apps; `app/read` +46.678 → result +47.497, 10 apps, zero missing IDs. Subscription +45.897 → acknowledgement +46.068, recovered false | +68.427 / 25.040 s |
+
+No `app/list` request occurs anywhere in either current file. The current small received results have keys `apps` and `apps, missingAppIds`, respectively, rather than a full catalog notification. Their Python JSON serializations are approximately 1.2/4.7 KB (not raw-frame/wire measurements). Subscription success shows capture coverage of the notification channel; it does not guarantee a catalog broadcast should have occurred. No later catalog occurs **within these windows**; later delivery beyond +204.192/+68.427 remains unobserved. Baseline post-mount coverage is longer; its first startup broadcast began at +4.458, inside the current warm recording's absolute duration, while its second began at +104.188, outside it. Compare startup ordering as well as absolute recording length; the captures cannot exclude a current broadcast delayed beyond their end.
+
+Authentication type and account/user identity match across the observed account results/evaluation snapshots; `getAuthStatus` reports `chatgpt`, `requiresOpenaiAuth: true`, authToken null. This is not an observed logout or different-account comparison. Both pairs use a fresh dedicated browser profile then same-context warm reload, with actual 304 asset revalidation. **Host/session cache state differs:** baseline cold subscription initially gets null evaluations and baseline warm gets a small snapshot with null payload; current cold and warm initially receive populated multi-megabyte payloads, SDK key and execution values. Matching user/account identity does not establish identical host caches, stable IDs, evaluations or server initialization state.
+
+There is source support for the changed request path in the unchanged served `app-initial`: `zWt` around lines 80289–80347 selects legacy `app/list` when `shouldUseNewAppLifecycle` is false; when true it uses `app/installed` followed by batched `app/read`, falling back only on unsupported-method errors. Call sites pass gate **`403472035`** (for example line 130995). The current initial shared snapshots' parsed payloads have that gate **true**, version 48; baseline snapshots have null payload, and baseline startup falls back without usable evaluations. Thus successful feature initialization plus the new lifecycle path explains the **observed client request difference** without a changed asset hash. It does **not** prove why the two early baseline host broadcasts disappeared: those precede this renderer's explicit request/subscription. Host producer state, another renderer, cache priming or deployment changes remain hypotheses needing host logs. There is no evidence that duplicate suppression is necessary on the current path. Retain the first/changed-snapshot contract and investigate producers before proposing it.
+
+### Cold shared script: headers are prompt, the uncompressed body is slow
+
+The reported **72.35 seconds is navigation-to-completion**, not request duration. Live cold shared JS request is +0.320464, completion +72.347760: **72.027296 s elapsed**. `response.timing.requestTime` is monotonic 6301.424729; send starts/ends 89.092/89.139 ms later, at navigation +0.411484/+0.411531. Headers start/end 115.507/115.629 ms later, at **+0.437899/+0.438021**. Send-to-first-header is about **26.415 ms**; header-end-to-completion is **71.910 s**. The `responseReceived` event itself is reported at +72.386, after `loadingFinished`'s embedded timestamp; treating that event time as first byte would wrongly classify this as server TTFB.
+
+| Property | Existing capture evidence |
+| --- | --- |
+| Asset | `app-shared-8bd9d0399038.js`, HTTP/1.1, status 200 cold |
+| Content-Encoding | Absent; Resource Timing `contentEncoding` empty; request offered gzip, deflate, br, zstd |
+| Content-Length / encoded body / decoded resource | **12,152,991 bytes each** |
+| CDP loadingFinished encoded transfer | **12,153,306 bytes including response headers** |
+| Resource Timing transferSize | 12,153,291 bytes (browser accounting uses a 300-byte header allowance); not an independent compressed-size estimate |
+| Cache | `public, max-age=0`; ETag `W/"b9709f-1a1e7348766"`, Last-Modified 2026-11-17 01:52:21 GMT |
+| Warm | Conditional revalidation, actual 304 in ExtraInfo, +0.169–0.321; 246 header bytes, cached body reused. Effective responseReceived status 200 is not a full retransmission |
+
+The same-origin Resource Timing duration is 72,027.3 ms, responseStart 438.9 ms and responseEnd 72,348.8 ms relative to `performance.timeOrigin`; that origin precedes the CDP navigation request by about 1 ms. Both sources agree. Body-transfer average is about 169 KB/s; this is endpoint delivery under concurrent startup traffic, not a network capacity measurement.
+
+Shared completion precedes the dynamically loaded initial script's request at +72.700 (its script initiator stack names `app-shared`, line 14421); initial JS finishes +135.767 and React is requested +137.457. Shared is therefore an early prerequisite, not a post-React operation. The cached warm pair avoids these body transfers. Slow delivery dominates this shared interval; background compilation may overlap it, but a 72-second main-thread parsing stall is not established.
+
+The **smallest justified static-delivery change** is negotiated HTTP compression or precompressed Brotli/gzip for the existing large JS at the serving layer, with `Vary: Accept-Encoding`, correct encoding/validators and identity fallback; verify encoded versus decoded lengths on a cold request and actual 304 behavior on reload. It requires identifying the actual static/TLS serving layer first. No bundler rewrite or cache-policy change is needed to test that finding. Longer immutable caching of hashed assets could remove revalidation, but the measured warm revalidation is already subsecond and is not the large cold-body problem. WebSocket compression does not compress these HTTP asset responses.
+
+### Priority, limitations and affected-client procedure
+
+**One prioritized next measurement:** correlate the **warm bootstrap body**, the largest remaining dependency, across upstream fetch and bridge/browser delivery. On the deployment host record monotonic fetch-start, headers, first/last decoded upstream chunk, body-end, socket enqueue/send progress and `bufferedAmount`, tagged with fetch UUID / pull / stream / connection ID; align against the browser's first/last write and close. Record host CPU/RSS and build/process/proxy identity alongside it, omitting bodies and credentials. This one measurement separates a slowly produced upstream body from bridge/network queuing before choosing a payload or transport change. Do not raise deadlines or suppress catalogs based on the current evidence. Static compression is the separately justified cold-delivery candidate, not the explanation for the warm residual.
+
+Observed total improvements remain **89.969 s cold / 258.596 s warm**. The portion caused by compression alone is **not identifiable**: host state, evaluation success and catalog request/notification behavior changed. The approximately **7.93 MB bootstrap is decoded content**; compressed live wire-byte counts remain unmeasured. Running Git/build identity, host metrics and the user's original WAN path remain unverified. No new capture from this workspace would establish that original-path behavior.
+
+Compact affected-client procedure: on that client's original WAN, install Playwright/Chromium and run the existing two-load harness with a new private output directory and normal cache:
+
+```sh
+npm install --prefix /tmp/codex-startup-tools --ignore-scripts playwright
+/tmp/codex-startup-tools/node_modules/.bin/playwright install chromium
+PLAYWRIGHT_MODULE=/tmp/codex-startup-tools/node_modules/playwright \
+CAPTURE_SECONDS=360 READY_SELECTOR='textarea, [contenteditable="true"]' HEADED=1 \
+node scripts/diagnostics/capture-startup.cjs \
+  https://z170-1.tailddb1d3.ts.net:8214/ /tmp/startup-affected-wan
+```
+
+Record client/browser version, UTC time, actual account/session, Tailscale `status` and `ping z170-1.tailddb1d3.ts.net` path (direct/relay), and running asset hashes; confirm screenshots and route logs. This procedure creates a fresh browser profile, so label it as such; separately reproduce in the affected existing profile if session-specific behavior is suspected. Preserve the first run as cold and its same-context reload as warm. Repeat from LAN with a separate fresh directory only if making a WAN/LAN comparison. Keep profiles, bodies and tokens private; share timing summaries and redacted captures. For the prioritized measurement, collect the host spans during this pair. A HAR alone omits tunneled bootstrap stream timing. Extend capture only if resolving a specific later-notification question; the existing current windows already cover installed/read replies and subscription acknowledgements.
+
+Analysis checks: re-extracted all four recordings, reconstructed both complete baseline catalogs as a positive control, checked current replies and subscription coverage, calculated warm intervals independently, compared embedded CDP/Resource Timing asset clocks and renderer RunTask overlap. Temporary analysis helpers/results are `/tmp/startup-decompose.py`, `/tmp/startup-extra.py`, `/tmp/catalog-check.py`, `/tmp/warm-trace.py` and corresponding logs; authenticated inputs remain outside Git. This update changes documentation only.
