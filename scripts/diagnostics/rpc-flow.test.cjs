@@ -12,36 +12,15 @@ const browserPath = path.resolve(
   __dirname,
   "../../scratch/asar/webview/assets/app-shared-8bd9d0399038.js",
 );
-const hostSource = fs.readFileSync(hostPath, "utf8");
+const { patch } = require("./rpc-window-candidate.cjs");
+const mode = process.env.RPC_WINDOW_MODE || "baseline";
+const ackDelay = Number(process.env.RPC_TEST_ACK_MS || 0);
+const consumerDelay = Number(process.env.RPC_TEST_CONSUMER_MS || 3);
+const hostSource = patch(fs.readFileSync(hostPath, "utf8"), mode);
 const browserSource = fs.readFileSync(browserPath, "utf8");
-function load(source, side, diagnostic) {
-  // Execute the actual bundle's self-contained RPC implementation, excluding app startup.
-  let core;
-  if (side === "host") {
-    core =
-      "var " +
-      source.slice(
-        source.indexOf("ce=Symbol(`workers-module`)"),
-        source.indexOf("var ut=D"),
-      );
-    core += ";return { Session:qe, Target:b, Window:st };";
-  } else {
-    core = source.slice(
-      source.indexOf("function JP(e)"),
-      source.indexOf("\nvar X;\nfunction bF()"),
-    );
-    core += ";yF();yF();return { Session:BFt, Target:QP, Window:QFt };";
-  }
-  return new Function("__codexRpcDiag", "t", core)(diagnostic, (fn) => {
-    let initialized = false;
-    return () => {
-      if (!initialized) {
-        initialized = true;
-        fn();
-      }
-    };
-  });
-}
+const { load } = require("./rpc-core.cjs");
+const hostPatched = instrument(hostSource, "host");
+const browserPatched = instrument(browserSource, "browser");
 function diagnostic(side, records) {
   const d = createRpcDiagnostics(side, true, (record) => records.push(record));
   d.collect = () => d.flush();
@@ -78,8 +57,8 @@ async function transfer(enabled, fail = false) {
   const records = [];
   const hd = enabled ? diagnostic("host", records) : undefined;
   const bd = enabled ? diagnostic("browser", records) : undefined;
-  const host = load(instrument(hostSource, "host"), "host", hd);
-  const browser = load(instrument(browserSource, "browser"), "browser", bd);
+  const host = load(hostPatched, "host", hd);
+  const browser = load(browserPatched, "browser", bd);
   const { WebSocket, WebSocketServer } = require("ws");
   const server = new WebSocketServer({ host: "127.0.0.1", port: 0 });
   await new Promise((resolve) => server.once("listening", resolve));
@@ -106,7 +85,10 @@ async function transfer(enabled, fail = false) {
     return {
       encodingLevel: "jsonCompatible",
       send(message) {
-        ws.send(JSON.stringify(message));
+        setTimeout(
+          () => ws.send(JSON.stringify(message)),
+          ws === client ? ackDelay : 0,
+        );
       },
       receive() {
         return queue.length
@@ -119,6 +101,7 @@ async function transfer(enabled, fail = false) {
     };
   }
   let reads = 0,
+    canceled = false,
     completed;
   const chunks = Array.from({ length: 32 }, (_, i) =>
     new Uint8Array(65536).fill(i),
@@ -129,6 +112,9 @@ async function transfer(enabled, fail = false) {
       let last;
       const body = new ReadableStream(
         {
+          cancel() {
+            canceled = true;
+          },
           pull(controller) {
             const now = performance.now();
             if (last !== undefined) gaps.push(now - last);
@@ -160,8 +146,34 @@ async function transfer(enabled, fail = false) {
       "browser pause must stop upstream draining",
     );
     if (fail) {
+      for (
+        let index = 0;
+        index < (typeof fail === "number" ? fail : 0);
+        index++
+      ) {
+        const { value, done } = await reader.read();
+        assert.equal(done, false);
+        assert.equal(
+          Buffer.compare(Buffer.from(value), Buffer.from(chunks[index])),
+          0,
+        );
+      }
       await reader.cancel(new Error("synthetic cancellation"));
-      await new Promise((resolve) => setTimeout(resolve, 30));
+      const cancelDeadline = performance.now() + 2000 + 6 * ackDelay;
+      while (
+        !canceled &&
+        reads !== chunks.length &&
+        performance.now() < cancelDeadline
+      )
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      await new Promise((resolve) => setTimeout(resolve, 3 * ackDelay + 80));
+      assert.ok(
+        canceled || reads === chunks.length,
+        "source must cancel or already reach EOF",
+      );
+      const stoppedAt = reads;
+      await new Promise((resolve) => setTimeout(resolve, ackDelay + 30));
+      assert.equal(reads, stoppedAt, "no production after cancel settles");
     } else {
       let index = 0;
       for (;;) {
@@ -171,7 +183,7 @@ async function transfer(enabled, fail = false) {
           Buffer.compare(Buffer.from(value), Buffer.from(chunks[index++])),
           0,
         );
-        await new Promise((resolve) => setTimeout(resolve, 3));
+        await new Promise((resolve) => setTimeout(resolve, consumerDelay));
       }
       assert.equal(index, chunks.length);
       await completed;
@@ -192,8 +204,17 @@ async function transfer(enabled, fail = false) {
             e.operationId !== undefined,
         ),
       );
+      assert.ok(
+        records.some(
+          (e) => e.event === "window-send" && e.estimatedBytes === 262404,
+        ),
+      );
+      if (mode === "512k" && !fail)
+        assert.ok(
+          records.some((e) => e.event === "window-ack" && e.window >= 524288),
+        );
       if (!fail) assert.ok(records.some((e) => e.event === "window-ack"));
-      else
+      else if (canceled)
         assert.ok(
           records.some(
             (e) => e.event === "credit-wait-end" && e.outcome === "rejected",
@@ -221,6 +242,9 @@ async function transfer(enabled, fail = false) {
         "credit wait must propagate to source reads",
       );
     return {
+      mode,
+      ackDelay,
+      consumerDelay,
       enabled,
       fail,
       records: records.length,
@@ -238,7 +262,9 @@ async function transfer(enabled, fail = false) {
 test("actual host/browser RPC cores: slow consumer, unchanged bytes, ACKs, cancellation", async (t) => {
   for (const enabled of [false, true]) {
     t.diagnostic(JSON.stringify(await transfer(enabled)));
-    if (enabled) t.diagnostic(JSON.stringify(await transfer(true, true)));
+    if (enabled)
+      for (const point of [true, 8, 28])
+        t.diagnostic(JSON.stringify(await transfer(true, point)));
   }
 });
 test("bounded metadata and host event-loop sampling", async () => {
@@ -265,7 +291,7 @@ test(
     const { WebSocketServer } = require("ws");
     const records = [];
     const hd = diagnostic("host", records);
-    const host = load(instrument(hostSource, "host"), "host", hd);
+    const host = load(hostPatched, "host", hd);
     let reads = 0;
     class Service extends host.Target {
       fetch() {
@@ -324,13 +350,45 @@ test(
         headless: true,
       });
       const page = await browser.newPage();
-      const patched = instrument(browserSource, "browser");
+      const cdp = await browser.newBrowserCDPSession();
+      const { processInfo } = await cdp.send("SystemInfo.getProcessInfo");
+      const rendererIds = processInfo
+        .filter((p) => p.type === "renderer")
+        .map((p) => p.id);
+      const samples = [];
+      const sample = () => {
+        const rendererRss = rendererIds.reduce((sum, pid) => {
+          try {
+            return (
+              sum +
+              Number(
+                fs
+                  .readFileSync(`/proc/${pid}/status`, "utf8")
+                  .match(/VmRSS:\s+(\d+)/)[1],
+              ) *
+                1024
+            );
+          } catch {
+            return sum;
+          }
+        }, 0);
+        samples.push({
+          host: process.memoryUsage().rss,
+          heap: process.memoryUsage().heapUsed,
+          rendererRss,
+        });
+      };
+      global.gc?.();
+      sample();
+      const sampler = setInterval(sample, 20);
+      t.after(() => clearInterval(sampler));
+      const patched = browserPatched;
       const core = patched.slice(
         patched.indexOf("function JP(e)"),
         patched.indexOf("\nvar X;\nfunction bF()"),
       );
       const result = await page.evaluate(
-        async ({ core, factory, url }) => {
+        async ({ core, factory, url, ackDelay, consumerDelay }) => {
           const records = [];
           const d = new Function("return (" + factory + ")")()(
             "browser",
@@ -355,7 +413,8 @@ test(
           const queue = [];
           let pending;
           // Same local MessagePort handoff as the browser shim, with JSON on the wire.
-          channel.port1.onmessage = (e) => ws.send(JSON.stringify(e.data));
+          channel.port1.onmessage = (e) =>
+            setTimeout(() => ws.send(JSON.stringify(e.data)), ackDelay);
           ws.onmessage = (e) => channel.port1.postMessage(JSON.parse(e.data));
           channel.port2.onmessage = (e) => {
             if (pending) {
@@ -381,7 +440,15 @@ test(
           });
           const response = await session.getRemoteMain().fetch();
           const reader = response.body.getReader();
-          await new Promise((r) => setTimeout(r, 100));
+          const stalled = [];
+          for (let i = 0; i < 3; i++) {
+            await new Promise((r) => setTimeout(r, 100 + ackDelay));
+            d.flush();
+            stalled.push({
+              started: records.filter((r) => r.event === "writer-start").length,
+              ended: records.filter((r) => r.event === "writer-end").length,
+            });
+          }
           let count = 0;
           for (;;) {
             const { done, value } = await reader.read();
@@ -389,23 +456,50 @@ test(
             if (value.byteLength !== 65536 || value.some((v) => v !== count))
               throw Error("Corrupt stream");
             count++;
-            await new Promise((r) => setTimeout(r, 3));
+            await new Promise((r) => setTimeout(r, consumerDelay));
           }
-          await new Promise((r) => setTimeout(r, 20));
+          await new Promise((r) => setTimeout(r, ackDelay + 30));
           d.close();
           ws.close();
           channel.port1.close();
           channel.port2.close();
-          return { count, records };
+          return { count, records, stalled };
         },
         {
           core,
+          ackDelay,
+          consumerDelay,
           factory: createRpcDiagnostics.toString(),
           url: `ws://127.0.0.1:${server.address().port}`,
         },
       );
+      clearInterval(sampler);
+      sample();
+      global.gc?.();
+      const pageCdp = await page.context().newCDPSession(page);
+      await pageCdp.send("HeapProfiler.collectGarbage");
+      sample();
       hd.collect();
+      const resource = Object.fromEntries(
+        Object.keys(samples[0]).map((key) => [
+          key,
+          {
+            start: samples[0][key],
+            peak: Math.max(...samples.map((s) => s[key])),
+            end: samples.at(-1)[key],
+          },
+        ]),
+      );
       assert.equal(result.count, 24);
+      assert.deepEqual(
+        result.stalled[1],
+        result.stalled[2],
+        "stalled Chromium writer queue must plateau",
+      );
+      assert.ok(
+        result.stalled[2].started > result.stalled[2].ended,
+        "no ACK before writer settlement",
+      );
       assert.ok(
         result.records.some(
           (r) => r.event === "writer-end" && r.durationMs > 50,
@@ -417,6 +511,16 @@ test(
       );
       t.diagnostic(
         JSON.stringify({
+          mode,
+          ackDelay,
+          consumerDelay,
+          resource,
+          stalled: result.stalled,
+          maxEstimatedFlight: Math.max(
+            ...records
+              .filter((r) => r.event === "window-send")
+              .map((r) => r.bytesInFlight),
+          ),
           browserChunks: result.count,
           hostEvents: records.length,
           browserEvents: result.records.length,

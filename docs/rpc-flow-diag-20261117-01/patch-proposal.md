@@ -1,6 +1,6 @@
 # Separate proposal: isolated two-write credit-floor experiment
 
-Status: reviewable code-level proposal only. **Not implemented, tested as a runtime change, or deployed.** The running service is normal with diagnostics disabled. This proposal changes no ACK path or writer promise.
+Status: the proposal below is preserved as the original design. An offline, disabled-by-default candidate builder and isolated runtime tests are now implemented; see [experiment procedure and results](experiment.md). **Not deployed.** No production daemon change or restart is authorized.
 
 For an isolated host candidate pinned to Desktop 26.1007.30912, the sole behavioral edit is:
 
@@ -20,4 +20,4 @@ This host-wide constant affects every host RPC window in B, not just bootstrap. 
 
 Run the correctness/resource acceptance gates in [the A/B plan](analysis.md#controlled-ab-plan). Existing window-equivalence tests compare instrumented and original behavior and do not by themselves establish that a larger floor is safe. Test the altered extracted RPC core explicitly, particularly stopped consumers, cancel with credit pending, failed writer rejection, large-write overshoot, and multiple concurrent streams. Keep the experiment's 1-MiB flight abort guard outside the data path so the only performance variable is the minimum.
 
-Reject the proposal if the added flight only increases queuing, RTT, cancellation backlog or resident memory. No runtime patch has been produced because no performance implementation or deployment was requested; this document defines the exact proposed edit and the work required before any trial.
+Reject the proposal if the added flight only increases queuing, RTT, cancellation backlog or resident memory. The runtime candidate is now available through the separate builder documented in [experiment.md](experiment.md); deployment still requires separate approval.

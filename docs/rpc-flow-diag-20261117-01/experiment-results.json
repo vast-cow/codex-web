@@ -1,0 +1,395 @@
+{
+  "scope": "Isolated extracted RPC cores only; production untouched; no deployment acceptance claimed",
+  "tests": {
+    "matrixRuns": 6,
+    "matrixTestsPassed": 36,
+    "windowAndAssetTestsPassed": 5,
+    "skipped": 0,
+    "isolatedServerCompilation": "passed",
+    "formatAndDiffChecks": "passed"
+  },
+  "artifactComparison": {
+    "filesCompared": 51257,
+    "differences": [
+      ".vite/build/startup-requirements-C6B1x9gL.js",
+      "rpc-window-experiment.json"
+    ],
+    "sourceHostUnchanged": true
+  },
+  "artifacts": {
+    "baseline": {
+      "mode": "baseline",
+      "target": ".vite/build/startup-requirements-C6B1x9gL.js",
+      "before": "73f93b81152bff48cd27bcebcf27c430fb763e5c7418c67824950f4092ba933d",
+      "after": "73f93b81152bff48cd27bcebcf27c430fb763e5c7418c67824950f4092ba933d",
+      "runtime": {
+        "initial": 262144,
+        "minimum": 65536,
+        "maximum": 1073741824,
+        "afterFirstAck": 262144,
+        "afterSecondAck": 524288
+      },
+      "browser": "471238df871737e2118a16705b18b7b20418bcb879e28a5a25a5062d50641cf9"
+    },
+    "512k": {
+      "mode": "512k",
+      "target": ".vite/build/startup-requirements-C6B1x9gL.js",
+      "before": "73f93b81152bff48cd27bcebcf27c430fb763e5c7418c67824950f4092ba933d",
+      "after": "8762ffce2eee25e2a33363d9c9614f31026e0b06e8b5e7875aa457ca835b73dd",
+      "runtime": {
+        "initial": 262144,
+        "minimum": 524288,
+        "maximum": 1073741824,
+        "afterFirstAck": 262144,
+        "afterSecondAck": 524288
+      },
+      "browser": "471238df871737e2118a16705b18b7b20418bcb879e28a5a25a5062d50641cf9"
+    }
+  },
+  "matrix": [
+    {
+      "name": "baseline-0-0",
+      "status": 0,
+      "chromium": {
+        "mode": "baseline",
+        "ackDelay": 0,
+        "consumerDelay": 0,
+        "resource": {
+          "host": {
+            "start": 1169055744,
+            "peak": 1169055744,
+            "end": 1169055744
+          },
+          "heap": {
+            "start": 106999784,
+            "peak": 123895088,
+            "end": 107493288
+          },
+          "rendererRss": {
+            "start": 311476224,
+            "peak": 351965184,
+            "end": 349401088
+          }
+        },
+        "stalled": [
+          {
+            "started": 1,
+            "ended": 0
+          },
+          {
+            "started": 1,
+            "ended": 0
+          },
+          {
+            "started": 1,
+            "ended": 0
+          }
+        ],
+        "maxEstimatedFlight": 1312020,
+        "browserChunks": 24,
+        "hostEvents": 111,
+        "browserEvents": 73
+      },
+      "streamCases": 5
+    },
+    {
+      "name": "512k-0-0",
+      "status": 0,
+      "chromium": {
+        "mode": "512k",
+        "ackDelay": 0,
+        "consumerDelay": 0,
+        "resource": {
+          "host": {
+            "start": 1131200512,
+            "peak": 1131200512,
+            "end": 1131200512
+          },
+          "heap": {
+            "start": 107013648,
+            "peak": 123881336,
+            "end": 107485352
+          },
+          "rendererRss": {
+            "start": 309116928,
+            "peak": 351956992,
+            "end": 349421568
+          }
+        },
+        "stalled": [
+          {
+            "started": 1,
+            "ended": 0
+          },
+          {
+            "started": 1,
+            "ended": 0
+          },
+          {
+            "started": 1,
+            "ended": 0
+          }
+        ],
+        "maxEstimatedFlight": 1312020,
+        "browserChunks": 24,
+        "hostEvents": 108,
+        "browserEvents": 73
+      },
+      "streamCases": 5
+    },
+    {
+      "name": "baseline-40-3",
+      "status": 0,
+      "chromium": {
+        "mode": "baseline",
+        "ackDelay": 40,
+        "consumerDelay": 3,
+        "resource": {
+          "host": {
+            "start": 1105444864,
+            "peak": 1105444864,
+            "end": 1105444864
+          },
+          "heap": {
+            "start": 107012600,
+            "peak": 123859784,
+            "end": 107496440
+          },
+          "rendererRss": {
+            "start": 312983552,
+            "peak": 356134912,
+            "end": 352428032
+          }
+        },
+        "stalled": [
+          {
+            "started": 1,
+            "ended": 0
+          },
+          {
+            "started": 1,
+            "ended": 0
+          },
+          {
+            "started": 1,
+            "ended": 0
+          }
+        ],
+        "maxEstimatedFlight": 2624040,
+        "browserChunks": 24,
+        "hostEvents": 105,
+        "browserEvents": 73
+      },
+      "streamCases": 5
+    },
+    {
+      "name": "512k-40-3",
+      "status": 0,
+      "chromium": {
+        "mode": "512k",
+        "ackDelay": 40,
+        "consumerDelay": 3,
+        "resource": {
+          "host": {
+            "start": 1131008000,
+            "peak": 1131008000,
+            "end": 1131008000
+          },
+          "heap": {
+            "start": 106969672,
+            "peak": 123852456,
+            "end": 107500232
+          },
+          "rendererRss": {
+            "start": 304873472,
+            "peak": 350040064,
+            "end": 349073408
+          }
+        },
+        "stalled": [
+          {
+            "started": 1,
+            "ended": 0
+          },
+          {
+            "started": 1,
+            "ended": 0
+          },
+          {
+            "started": 1,
+            "ended": 0
+          }
+        ],
+        "maxEstimatedFlight": 2624040,
+        "browserChunks": 24,
+        "hostEvents": 105,
+        "browserEvents": 73
+      },
+      "streamCases": 5
+    },
+    {
+      "name": "baseline-100-30",
+      "status": 0,
+      "chromium": {
+        "mode": "baseline",
+        "ackDelay": 100,
+        "consumerDelay": 30,
+        "resource": {
+          "host": {
+            "start": 1131196416,
+            "peak": 1131196416,
+            "end": 1131196416
+          },
+          "heap": {
+            "start": 106990624,
+            "peak": 123793352,
+            "end": 107380568
+          },
+          "rendererRss": {
+            "start": 312832000,
+            "peak": 355082240,
+            "end": 352428032
+          }
+        },
+        "stalled": [
+          {
+            "started": 1,
+            "ended": 0
+          },
+          {
+            "started": 1,
+            "ended": 0
+          },
+          {
+            "started": 1,
+            "ended": 0
+          }
+        ],
+        "maxEstimatedFlight": 1836828,
+        "browserChunks": 24,
+        "hostEvents": 112,
+        "browserEvents": 73
+      },
+      "streamCases": 5
+    },
+    {
+      "name": "512k-100-30",
+      "status": 0,
+      "chromium": {
+        "mode": "512k",
+        "ackDelay": 100,
+        "consumerDelay": 30,
+        "resource": {
+          "host": {
+            "start": 1130323968,
+            "peak": 1130323968,
+            "end": 1130323968
+          },
+          "heap": {
+            "start": 106990560,
+            "peak": 123777328,
+            "end": 107380376
+          },
+          "rendererRss": {
+            "start": 310079488,
+            "peak": 351756288,
+            "end": 348880896
+          }
+        },
+        "stalled": [
+          {
+            "started": 1,
+            "ended": 0
+          },
+          {
+            "started": 1,
+            "ended": 0
+          },
+          {
+            "started": 1,
+            "ended": 0
+          }
+        ],
+        "maxEstimatedFlight": 1836828,
+        "browserChunks": 24,
+        "hostEvents": 112,
+        "browserEvents": 73
+      },
+      "streamCases": 5
+    }
+  ],
+  "adapterResources": [
+    {
+      "mode": "baseline",
+      "delay": 0,
+      "peakQueue": 18,
+      "stalledQueue": 1,
+      "stalledEstimatorBytes": 262404,
+      "rssStart": 186634240,
+      "rssStall": 186634240,
+      "rssEnd": 186634240,
+      "heapStall": 24558976,
+      "heapEnd": 23891056
+    },
+    {
+      "mode": "baseline",
+      "delay": 10,
+      "peakQueue": 24,
+      "stalledQueue": 1,
+      "stalledEstimatorBytes": 262404,
+      "rssStart": 186634240,
+      "rssStall": 186634240,
+      "rssEnd": 186634240,
+      "heapStall": 24404000,
+      "heapEnd": 23891344
+    },
+    {
+      "mode": "baseline",
+      "delay": 50,
+      "peakQueue": 26,
+      "stalledQueue": 2,
+      "stalledEstimatorBytes": 582951,
+      "rssStart": 186634240,
+      "rssStall": 186634240,
+      "rssEnd": 186634240,
+      "heapStall": 24429632,
+      "heapEnd": 23923928
+    },
+    {
+      "mode": "512k",
+      "delay": 0,
+      "peakQueue": 24,
+      "stalledQueue": 2,
+      "stalledEstimatorBytes": 582951,
+      "rssStart": 186896384,
+      "rssStall": 186896384,
+      "rssEnd": 186896384,
+      "heapStall": 24178624,
+      "heapEnd": 23613928
+    },
+    {
+      "mode": "512k",
+      "delay": 10,
+      "peakQueue": 26,
+      "stalledQueue": 2,
+      "stalledEstimatorBytes": 582951,
+      "rssStart": 186896384,
+      "rssStall": 186896384,
+      "rssEnd": 186896384,
+      "heapStall": 24117928,
+      "heapEnd": 23659760
+    },
+    {
+      "mode": "512k",
+      "delay": 50,
+      "peakQueue": 26,
+      "stalledQueue": 2,
+      "stalledEstimatorBytes": 582951,
+      "rssStart": 186896384,
+      "rssStall": 186896384,
+      "rssEnd": 186896384,
+      "heapStall": 24100576,
+      "heapEnd": 23660696
+    }
+  ]
+}
