@@ -2,7 +2,9 @@
 
 ## Scope and outcome
 
-**Current follow-up:** see [Pushed-revision live check and operator handoff](#pushed-revision-live-check-and-operator-handoff) for verified live Brotli/gzip delivery and complete browser captures: routes mount at **67.014 s cold / 39.698 s warm**, versus **181.132 / 43.387 s** in the matching earlier pair. The warm headers-to-close interval remains **16.192 s**, with host attribution still missing. Authenticated host execution is still unavailable; running revision and host-side deployment/diagnostic verification remain pending.
+**Current correlated result:** [bootstrap-diag-20261117-01](#correlated-hostbrowser-analysis--bootstrap-diag-20261117-01) validates all 135 chunks and 7,956,397 bytes. Of the 19.180-s host decoded-read span, **19.161 s is between reader calls**, with only **18.951 ms pending in subsequent reads**. This supports consumer/RPC flow-control pacing, potentially driven by downstream feedback; it does **not** establish slow upstream production. The browser body span is 19.386 s, and the outstanding byte window stays bounded. See the per-chunk table, clock bounds, plots, and narrow next-instrumentation request below.
+
+**Earlier compressed-asset follow-up:** see [Pushed-revision live check and operator handoff](#pushed-revision-live-check-and-operator-handoff) for verified live Brotli/gzip delivery and complete browser captures: routes mount at **67.014 s cold / 39.698 s warm**, versus **181.132 / 43.387 s** in the matching earlier pair. The warm headers-to-close interval remains **16.192 s**, with host attribution still missing. Authenticated host execution is still unavailable; running revision and host-side deployment/diagnostic verification remain pending.
 
 **Earlier repository follow-up:** static Brotli/gzip precompression and opt-in bootstrap boundary diagnostics are implemented and locally validated. The public shared-asset HEAD at **04:37:23 UTC** still returns 12,152,991 bytes without Content-Encoding when offered Brotli/gzip; no deployment containing this change is established. The previous “compression now negotiates” finding below concerns **WebSocket** compression. See [Implementation and local validation](#implementation-and-local-validation) and [deployment/collection instructions](bootstrap-delivery-diagnostics.md). No live speedup or attribution of the remaining bootstrap interval is claimed.
 
@@ -637,3 +639,92 @@ No host upstream headers/read-start/read/end, serialization, send-queue, buffere
 ### Post-capture HTTP checks
 
 After both captures, a full `curl --raw -H 'Accept-Encoding: gzip'` GET of the same shared URL returned HTTP **200**, **`Content-Encoding: gzip`**, **`Vary: Accept-Encoding`**, **2,808,778 actual encoded body bytes**, **17.161172 s** total, ETag `W/"2adbca-1a1e7348766"`. Gunzip produces the same 12,152,991-byte baseline SHA-256 as Brotli. The identity HEAD returns 12,152,991-byte Content-Length, no Content-Encoding, Vary, and a distinct ETag `W/"b9709f-1a1e7348766"`. A Brotli GET with `If-None-Match: W/"23d3d2-1a1e7348766"` returns **304**, Vary, the same Brotli ETag/encoding, and **0 downloaded body bytes**. Public Brotli **and gzip** delivery are verified; runtime filesystem siblings and full host build order still require authenticated inspection.
+
+## Correlated host/browser analysis — bootstrap-diag-20261117-01
+
+**Conclusion: the dominant observed delay is between host reader calls, consistent with consumer/RPC flow-control pacing. Slow upstream production is not established.** The full 135-chunk join changes the interpretation suggested by similar first-to-last read and browser durations: the host's `reader.read()` promises are almost always immediately fulfilled, while calls to read the next chunk are delayed. The small outstanding byte window could transmit downstream backpressure into upstream reads. Neither fast socket callbacks nor a bounded backlog excludes a network-paced feedback loop.
+
+No new capture, service change, timeout change, or production patch was made for this analysis. The separately supplied host archive reports normal operation restored, diagnostics unset, and a successful restoration check. This is host-supplied evidence, not an independent CFFV5 service inspection. Earlier sections describe earlier recordings and their then-missing host coverage.
+
+### Evidence and join validation
+
+Derived metadata only: [all 135 chunks](bootstrap-diag-20261117-01/chunk-timings.csv), [12 paired clocks](bootstrap-diag-20261117-01/clock-pairs.csv), and [computed statistics](bootstrap-diag-20261117-01/summary.json). The CSV contains both original host/browser monotonic timestamps, decoded byte ranges through cumulative totals, within-host stage durations, bounded queue/write-to-receipt delays, and a separate nearest-clock-sample sensitivity calculation. Negative nearest-sample lower bounds mean that sample cannot resolve a positive delay; they are not measured negative latency. No authenticated payload, URL query, cookie, token, or raw trace is included in these derived files.
+
+The input archive's 12 SHA-256 entries verify, and its timing summary equals the separately supplied summary. Raw host metadata remains under `/tmp/bootstrap-diag-20261117-01/host-import/bootstrap-diag-20261117-01/`; authenticated browser captures remain under `/tmp/bootstrap-diag-20261117-01/`. The private offline analysis script is `correlate.py` in that browser directory. Source hashes are retained in the derived summary. Nothing in those private directories is committed.
+
+| Identifier | Measured warm reload |
+| --- | --- |
+| Original HTTP-service fetch UUID | `fab59d55-b4ab-4a60-a299-da5ebe576990` |
+| Diagnostic response/header UUID | `b01f2e4b-d26b-4954-8f9a-9dc36f4904d3` |
+| Host connection | `47fc204d-9cec-4d55-8a62-33e114aa4288` |
+| MessagePort / response pull / readable stream | `message_port_ipc_bridge_1` / `17` / `7` |
+| Body sequence / close sequence / headers sequence | `0–134` / `135` / `-1` |
+| Complete decoded body | **7,956,397 bytes in 135 writes** |
+
+Every body sequence occurs exactly once at each upstream read, bridge serialization, queue insertion, send return, local callback, console receipt, console dispatch, and CDP frame receipt. Byte lengths and cumulative totals agree. Headers and close are checked separately: 137 tagged messages per bridge/receipt stage; no failed local writes. Upstream read boundaries happen to equal bridge write boundaries for this run, so sequence joins are additionally proven by identical cumulative byte ranges. Do not assume that equivalence for another run.
+
+**UUID limitation:** the host logs the original UUID in `bridge-request`, but `upstream-start` has a newly generated diagnostic UUID and `correlated:false`; asynchronous context propagation was lost. The browser records the original bootstrap invocation and its response/pull; the response carries the diagnostic header, whose connection/stream tags match the host's complete body. This is the browser-supported association, not independent host UUID propagation. Time proximity alone does not establish it; no preparation-load identifier is used.
+
+### Clock calibration and uncertainty
+
+All 14 browser probes have replies with matching probe IDs. Each of the 12 host samples pairs uniquely with a browser reply by **connection, exact timeOrigin, and browserMs**; the host sample format omits probeId. The two unmatched browser reply IDs are `d308b625-70a8-428b-92c2-88028f8797fb` (browserMs 11162.2) and `09162013-2d55-44c7-97ec-86977916879d` (42146.2). Their host records are absent; probe expiry is possible but is not proven. Their browser replies are not additional host calibration samples.
+
+For each pair, host-minus-browser offset lies in **[H0−B, H1−B]**, without a symmetric-latency assumption. The six samples through body close have a common intersection **[529900.518, 529926.333] ms**, width **25.815 ms**, conditional on offset being effectively constant during that interval. Their individual RTT bounds range from **26.070 to 837.015 ms**. The smallest RTT in the entire recording is **25.592 ms**, with offset **[529900.672, 529926.265] ms**, but it is at browser +60.354 s, after the body; it is not silently substituted for a nearby sample.
+
+All 12 samples are compatible with a whole-run constant-offset intersection **[529901.004, 529925.917] ms**. This consistency check cannot prove zero clock drift. The per-chunk CSV also gives the nearest sample's individual bounds instead of depending only on the common intersection. The plots use the body intersection midpoint solely to place the browser curve, with its full bound shown. Cross-host intervals below are conditional bounds, not exact one-way network latency. A hypothetical 100-ppm relative clock-rate error over 30 s would add up to 3 ms of alignment error; this is a sensitivity example, not a measured drift limit. No synchronized epoch-clock subtraction is used.
+
+### Delivery curves and bounded backlog
+
+![Cumulative decoded bytes at the three observed stages](bootstrap-diag-20261117-01/cumulative-delivery.svg)
+
+Each panel has the same time origin (first host decoded read), scale, byte ranges, and final byte total. Browser placement uses the bounded monotonic mapping above. Local callbacks indicate progress on the host, not peer delivery. Payload sizes are decoded counts, not Brotli, compressed WebSocket, TCP, or TLS wire bytes.
+
+![Differences in cumulative decoded bytes between observed stages](bootstrap-diag-20261117-01/stage-backlog.svg)
+
+Maximum decoded bytes read but not locally written: **229,376 B (224 KiB)**; time-mean approximately **125,903 B (123 KiB)**. Maximum locally written but not explicitly received: **196,608–212,992 B (192–208 KiB)** over the allowed clock placement. The midpoint read-to-browser maximum is **262,144 B (256 KiB)**. These are differences between observed cumulative boundaries, not identified physical queue sizes. Most of the transfer holds roughly two 64-KiB chunks between read and local write, and at most about one more chunk between local write and receipt after the initial burst. The outstanding totals do not grow to megabytes as the run proceeds.
+
+Matching-chunk read→serialization delay is **260.115 ms median**, **625.732 ms p95**, **1,221.736 ms maximum**. Thus there is real pre-serialization waiting even though it is bounded in bytes. The observer cannot assign that waiting entirely to computation: an awaited consumer/write-credit promise can occupy the interval.
+
+| Measured stage | Median | p95 (nearest rank) | Maximum |
+| --- | ---: | ---: | ---: |
+| Pending decoded reader call, 135 data reads | 0.119 ms | 0.243 ms | 1.252 ms |
+| Gap from completed data read to next data-read call, 134 gaps | 128.493 ms | 380.033 ms | 615.502 ms |
+| Read completion → bridge serialization | 260.115 ms | 625.732 ms | 1,221.736 ms |
+| Serialization → queue insertion | 0.334 ms | 0.409 ms | 0.499 ms |
+| Queue insertion → local callback | 2.703 ms | 3.889 ms | 6.508 ms |
+| Queue insertion → explicit browser receipt, bounded | 120.268–146.083 ms | 351.688–377.503 ms | 587.176–612.991 ms |
+| Local callback → explicit browser receipt, bounded | 118.484–144.299 ms | 348.016–373.831 ms | 583.348–609.163 ms |
+
+These per-chunk durations overlap; their sums are not an elapsed-time decomposition. A local callback's timestamp is not a first-packet transmit timestamp. Cross-host stages include host/TLS/proxy/transport/complete-message/browser-callback scheduling, which these traces do not individually separate. The maximum observed socket `bufferedAmount` is 263,469 bytes and includes other traffic. No 250-ms queue-progress sample was emitted; that does not establish zero buffering. Node averaged 6.86% of one CPU over the host's sampled window, with 385–397 MB RSS; there is no host event-loop delay trace to exclude short scheduling stalls.
+
+The longest repeated pause is about **615 ms**, with another about **607 ms** nearby; there is no established fixed periodic timer. The 615-ms browser inter-receipt gap preceding sequence 82 maps to approximately **10.205–10.820 s** after the first host read. Bridge queue insertion pauses over **10.220–10.836 s** preceding sequence 83, and decoded reads pause over **10.220–10.836 s** preceding sequence 85. Across all 132 applicable pairs, read gap `i+2` and queue gap `i` have Pearson **r=0.9999977**. This shift is strong evidence of a small paced pipeline and feedback, rather than independent upstream read waits. It does not identify the uninstrumented awaited promise or prove a network fault.
+
+### Quantitative accounting of the 19.386-second body span
+
+The first and final chunk already have different stage lags, so compare their lag changes rather than summing all per-chunk waits. With U=decoded read completion, Q=queue insertion, and B=browser receipt:
+
+`B_last − B_first = (U_last − U_first) + [(Q−U)_last − (Q−U)_first] + [(B−Q)_last − (B−Q)_first]`
+
+| Nonoverlapping accounting term | Seconds |
+| --- | ---: |
+| Gaps between data-read completion and next data-read call | +19.160951 |
+| Time pending in subsequent data-read calls (excludes first call) | +0.018951 |
+| Increase in first→last read-to-queue lag | +0.258532 |
+| Change in first→last queue-to-browser lag | −0.052433 |
+| **First→last explicit browser body receipt** | **19.386000** |
+
+The first two terms partition the **19.179901-s** host first→last decoded-read span exactly; the total wait in all 135 data-read promises is **20.202 ms**, including the first call. The gap term is **99.901% of the host read span** and **98.840% of the browser body span**. The last two terms are endpoint lag changes, not claims of exclusive subsystem CPU or wire time. Clock offset cancels in those changes under the stated constant-offset model. The **+0.206099-s net tail growth** explains why browser first→last receipt is longer than host first→last read.
+
+For chunk 0, read→queue is **0.302 ms**, and queue→browser is **76.993–102.808 ms**. For chunk 134, read→queue is **258.834 ms**, and queue→browser is **24.559–50.374 ms**. The final network/complete-message lag is smaller than the initial lag; a growing unbounded downstream queue is not observed. Nevertheless, moderate per-chunk delivery latency can pace a credit-limited stream without a large queue.
+
+Completion adds only **28.500 ms** from the last browser body message to explicit close. On the host, the last decoded read→EOF read call is **154.124 ms**, the EOF read itself waits **0.147 ms**, and upstream end→close queue insertion is **157.103 ms**. These overlap the final data chunk's pipeline progress; they must not be appended to the browser's 19.386-s span. Last body queue→close queue is **52.539 ms**; bounded close queue→browser receipt is **0.520–26.335 ms**.
+
+Navigation began at **08:20:02.599 UTC**. Browser milestones remain: headers +11.786 s, first body +11.787, last body +31.173, close +31.201, Ready +31.403, runtime +31.562, routes +42.592. Close→Ready is **202.383 ms**; runtime→mount is **11.030 s**, a separate startup dependency. Main-thread RunTasks occupy **1.061 s**, maximum **13.292 ms**, during body delivery; maximum tagged receipt→dispatch is **1.500 ms**. Neither is a continuous 19-second browser execution stall. The shim's standalone Ready/mount markers are absent because the application uses `ipc-renderer-invoke` while that hook checks `ipc-renderer-send`; explicit application Ready/runtime/mount logs supply those milestones.
+
+### Dominant bottleneck and next action
+
+**Observed location:** host read scheduling and the pre-serialization streaming pipeline, with a small persistent outstanding byte window. **Most likely mechanism:** consumer/RPC flow-control pacing, potentially reflecting downstream delivery/acknowledgement timing. The near-immediate reader promises refute using the 19.179-s read span as evidence of 19 seconds waiting on upstream data. They do not prove that the whole upstream body was already available: Node fetch/decompression can buffer while the consumer is idle, and there are no lower-level upstream-arrival timestamps. Upstream headers report HTTP 200, JSON, Brotli (`br`), and no Content-Length. Encoded byte throughput, decoder scheduling, actual protocol/version, and where demand pauses originate remain unmeasured. Do not attribute this to OpenAI or another upstream service.
+
+The single prioritized next experiment is **metadata-only instrumentation of the actual HTTP-service→RPC stream consumer's pull/write-credit awaits**, correlated to upstream read starts and the existing browser receipts. [The exact host-side request and validation criteria](bootstrap-diag-20261117-01/next-host-experiment.md) specify the missing boundaries. This is an instrumentation experiment, not a proposed timeout, WebSocket-size, compression, or production behavior change. If it confirms a small RPC credit window dominates, a bounded-window experiment becomes justified; this capture alone does not justify changing that window.
+
+CFFV5 remains remote tailnet access, physical path unclassified; Tailscale direct/relay and identity with the original affected WAN path are unverified. Existing IPC compression is permessage-deflate with no-context-takeover, and warm shared/initial JS responses are 304. No recapture or SSH access from CFFV5 was needed.

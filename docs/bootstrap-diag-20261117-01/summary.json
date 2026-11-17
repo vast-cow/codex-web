@@ -1,0 +1,251 @@
+{
+  "label": "bootstrap-diag-20261117-01",
+  "validated_chunks": 135,
+  "decoded_bytes": 7956397,
+  "missing_or_duplicate_events": 0,
+  "fetch_uuid": "fab59d55-b4ab-4a60-a299-da5ebe576990",
+  "diagnostic_uuid": "b01f2e4b-d26b-4954-8f9a-9dc36f4904d3",
+  "connection_id": "47fc204d-9cec-4d55-8a62-33e114aa4288",
+  "stream_id": 7,
+  "response_pull": 17,
+  "host_context_correlated": false,
+  "upstream_encoding": "br",
+  "status": 200,
+  "clock_pairs": 12,
+  "browser_probes_replies": 14,
+  "unpaired_probe_ids": [
+    "d308b625-70a8-428b-92c2-88028f8797fb",
+    "09162013-2d55-44c7-97ec-86977916879d"
+  ],
+  "body_offset_min_ms": 529900.5177989985,
+  "body_offset_max_ms": 529926.332758,
+  "body_offset_width_ms": 25.81495900149457,
+  "whole_run_constant_offset_intersection_ms": [
+    529901.0037059985,
+    529925.9169129977
+  ],
+  "best_rtt_sample": {
+    "probe_id": "69cf39c3-01b0-4344-98a6-65b80ffcf086",
+    "browser_ms": 60354,
+    "h0_ms": 590254.67241,
+    "h1_ms": 590280.264827,
+    "offset_min_ms": 529900.67241,
+    "offset_max_ms": 529926.264827,
+    "rtt_ms": 25.592416999978013
+  },
+  "assumption": "Common offset across body interval; nearest-sample bounds also supplied. Midpoint only for plot placement, never an assumed symmetric one-way delay.",
+  "first_to_last_breakdown_ms": {
+    "read_pending_excluding_first": 18.95052900048904,
+    "between_read_calls": 19160.950629999512,
+    "read_to_queue_lag_growth": 258.5321689998964,
+    "queue_to_browser_lag_change": -52.4333279998973,
+    "total_browser_span": 19386.0,
+    "total_host_read_span": 19179.901159
+  },
+  "stats": {
+    "read_wait_ms": {
+      "min": 0.07133499998599291,
+      "median": 0.11887500004377216,
+      "p95_nearest_rank": 0.24279299995396286,
+      "max": 1.2517620000289753,
+      "sum": 20.202291000518017
+    },
+    "before_next_read_start_ms": {
+      "min": 0.04170699999667704,
+      "median": 128.49340050003957,
+      "p95_nearest_rank": 380.03264800005127,
+      "max": 615.5024749999866,
+      "sum": 19160.950629999512
+    },
+    "read_to_serialize_ms": {
+      "min": 0.12040500005241483,
+      "median": 260.1147799999453,
+      "p95_nearest_rank": 625.732226000051,
+      "max": 1221.7357129999436
+    },
+    "serialize_to_queue_ms": {
+      "min": 0.07061799999792129,
+      "median": 0.3339459999697283,
+      "p95_nearest_rank": 0.4089570000069216,
+      "max": 0.4986229999922216
+    },
+    "queue_to_local_write_ms": {
+      "min": 0.6218890000600368,
+      "median": 2.702540999976918,
+      "p95_nearest_rank": 3.8888229998992756,
+      "max": 6.507796999998391
+    },
+    "queue_to_browser_min_ms": {
+      "min": 1.0982729992829263,
+      "median": 120.26764599920716,
+      "p95_nearest_rank": 351.6883519984549,
+      "max": 587.175578000024
+    },
+    "queue_to_browser_max_ms": {
+      "min": 26.913232000777498,
+      "median": 146.08260500070173,
+      "p95_nearest_rank": 377.50331099994946,
+      "max": 612.9905370015185
+    },
+    "write_to_browser_min_ms": {
+      "min": -0.3262040007393807,
+      "median": 118.48394599778112,
+      "p95_nearest_rank": 348.0163009985117,
+      "max": 583.3481390000088
+    },
+    "write_to_browser_max_ms": {
+      "min": 25.48875500075519,
+      "median": 144.2989049992757,
+      "p95_nearest_rank": 373.8312600000063,
+      "max": 609.1630980015034
+    }
+  },
+  "backlog_bytes": {
+    "max_read_minus_local_write": 229376,
+    "time_mean_read_minus_local_write": 125902.918188938,
+    "max_local_write_minus_browser_mid": 212992,
+    "max_local_write_minus_browser_offset_lower": 196608,
+    "max_local_write_minus_browser_offset_upper": 212992,
+    "max_read_minus_browser_mid": 262144
+  },
+  "first_and_last": [
+    {
+      "sequence": 0,
+      "bytes": 16384,
+      "upstream_read_complete_host_ms": 541610.922883,
+      "serialize_start_host_ms": 541611.08482,
+      "queue_insert_host_ms": 541611.225193,
+      "local_write_complete_host_ms": 541613.566026,
+      "browser_receipt_ms": 11787.699999999255,
+      "read_to_serialize_ms": 0.16193699999712408,
+      "queue_to_browser_min_ms": 76.99260599771515,
+      "queue_to_browser_max_ms": 102.80756499920972
+    },
+    {
+      "sequence": 134,
+      "bytes": 26541,
+      "upstream_read_complete_host_ms": 560790.824042,
+      "serialize_start_host_ms": 561049.473678,
+      "queue_insert_host_ms": 561049.658521,
+      "local_write_complete_host_ms": 561050.804529,
+      "browser_receipt_ms": 31173.699999999255,
+      "read_to_serialize_ms": 258.6496360000456,
+      "queue_to_browser_min_ms": 24.559277997817844,
+      "queue_to_browser_max_ms": 50.374236999312416
+    }
+  ],
+  "host_source_hash": "12b56cecac5f25c29e91d8f69f0409a817d2b2bfd8c1caf9c31b2bb06fde25e6",
+  "browser_source_hash": "e6593f23a60a9794fb7d9f4e446e3837b404474506bdecdf7d0d6a529864ab71",
+  "upstream_largest_gaps_ms": [
+    {
+      "gap_ms": 615.616701999912,
+      "following_sequence": 85
+    },
+    {
+      "gap_ms": 606.8546710000373,
+      "following_sequence": 86
+    },
+    {
+      "gap_ms": 497.55152700003237,
+      "following_sequence": 82
+    },
+    {
+      "gap_ms": 431.57759500003885,
+      "following_sequence": 114
+    },
+    {
+      "gap_ms": 391.66952800005674,
+      "following_sequence": 87
+    },
+    {
+      "gap_ms": 389.1008200000506,
+      "following_sequence": 84
+    },
+    {
+      "gap_ms": 380.16061899997294,
+      "following_sequence": 68
+    },
+    {
+      "gap_ms": 379.72074799996335,
+      "following_sequence": 55
+    }
+  ],
+  "local_write_largest_gaps_ms": [
+    {
+      "gap_ms": 615.7342720000306,
+      "following_sequence": 83
+    },
+    {
+      "gap_ms": 605.418416999979,
+      "following_sequence": 84
+    },
+    {
+      "gap_ms": 497.9576039999956,
+      "following_sequence": 80
+    },
+    {
+      "gap_ms": 431.3072159999283,
+      "following_sequence": 112
+    },
+    {
+      "gap_ms": 391.1273849999998,
+      "following_sequence": 85
+    },
+    {
+      "gap_ms": 389.4217840000056,
+      "following_sequence": 82
+    },
+    {
+      "gap_ms": 380.33429599995725,
+      "following_sequence": 53
+    },
+    {
+      "gap_ms": 380.22811599995475,
+      "following_sequence": 66
+    }
+  ],
+  "browser_largest_gaps_ms": [
+    {
+      "gap_ms": 615.4000000022352,
+      "following_sequence": 82
+    },
+    {
+      "gap_ms": 606.8000000007451,
+      "following_sequence": 83
+    },
+    {
+      "gap_ms": 497.70000000298023,
+      "following_sequence": 79
+    },
+    {
+      "gap_ms": 430.1000000014901,
+      "following_sequence": 111
+    },
+    {
+      "gap_ms": 391.29999999701977,
+      "following_sequence": 84
+    },
+    {
+      "gap_ms": 389.5999999977648,
+      "following_sequence": 81
+    },
+    {
+      "gap_ms": 380.3999999985099,
+      "following_sequence": 65
+    },
+    {
+      "gap_ms": 377.8999999985099,
+      "following_sequence": 52
+    }
+  ],
+  "completion_ms": {
+    "last_read_to_eof_call": 154.1235319999978,
+    "pending_eof_read": 0.1468319999985397,
+    "upstream_end_to_close_queue": 157.10341400001198,
+    "last_body_queue_to_close_queue": 52.5392990000546,
+    "browser_last_body_to_close": 28.5,
+    "close_queue_to_browser_min": 0.5199789977632463,
+    "close_queue_to_browser_max": 26.334937999257818
+  },
+  "gap_correlation_note": "Read gap[i+2] versus queue gap[i]: Pearson r=0.9999977293 over 132 pairs; descriptive alignment, not proof of the awaited promise."
+}
