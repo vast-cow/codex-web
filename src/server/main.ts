@@ -23,6 +23,7 @@ import {
 } from "./diagnostics/bootstrap";
 import { staticAssetDelivery } from "./static-assets";
 import { installModuleAliasHook } from "./module";
+import { validateNativeDependencies } from "./native-dependencies";
 
 installBootstrapFetchDiagnostics();
 
@@ -721,6 +722,14 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
 
 async function main(args: string[]) {
   const options = parseServerArgs(args);
+
+  try {
+    validateNativeDependencies();
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
+    return;
+  }
 
   await startIpcBridgeServer(options);
 }
