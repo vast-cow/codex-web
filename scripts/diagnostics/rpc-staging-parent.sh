@@ -54,12 +54,13 @@ PY
   > "$stage/evidence/chromium.private.log" 2>&1 &
 browser_pid=$!
 export TERM=xterm
+export STAGE="$stage"
 export XDG_CONFIG_HOME="$stage/parent-home/config"
 export XDG_CACHE_HOME="$stage/parent-home/cache"
 export XDG_DATA_HOME="$stage/parent-home/data"
 socket="$stage/control/parent-tmux.sock"
 tmux -S "$socket" -f /dev/null new-session -d -s parent \
-  "$stage/bin/codex" --cd "$stage/work" --sandbox workspace-write --no-alt-screen
+  "$stage/bin/codex" --cd "$stage/work" --add-dir "$stage" --sandbox workspace-write --no-alt-screen
 printf 'Staging parent: tmux -S %q attach -t parent\n' "$socket"
 while tmux -S "$socket" has-session -t parent 2>/dev/null; do
   kill -0 "$edge_pid" "$backend_pid" "$browser_pid"
