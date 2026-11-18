@@ -1,5 +1,7 @@
 # RPC window deployment readiness
 
+Follow-up from `7d03564`: [memory attribution, acceptance review and authenticated staging runbook](memory-and-staging.md). The original gate and results below are retained; the follow-up does not authorize a production trial.
+
 **NO-GO for a live A/B trial.** The isolated cutover, forced-crash recovery, active-stream shutdown, and restoration of exact A artifacts passed. Both full-stack runs exceeded the proposed 1,280 MiB charged-memory ceiling. Authenticated startup, the actual parent-job handoff, and a staged external Tailscale path remain unverified. Production stayed on its original release throughout this work.
 
 The smallest remaining operator action is to provide an interactive sign-in for an approved disposable account and one staging Tailscale identity with the actual parent-job launch procedure. Use that environment for a single contained A → B → A rehearsal with metadata-only observation and phase-level memory attribution. That run must meet the acceptance thresholds or return an explicit, evidence-backed threshold decision for review. The separate live A/B authorization comes afterward.
