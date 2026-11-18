@@ -19,22 +19,64 @@ const socket = path.join(control, "daemon", socketName);
 const evidence = { steps: [] };
 const fixtureUrl = "data:application/vnd.codex-isolated,statsig/bootstrap";
 const children = new Set();
+let memorySampler;
 const digest = (file) =>
   createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 const cgroup = fs.readFileSync("/proc/self/cgroup", "utf8");
 const memory = path.join("/sys/fs/cgroup", cgroup.trim().split("::")[1]);
 const readMemory = (name) =>
   fs.readFileSync(path.join(memory, name), "utf8").trim();
+const readCounters = (name) =>
+  Object.fromEntries(
+    readMemory(name)
+      .split("\n")
+      .map((line) => {
+        const [key, value] = line.split(" ");
+        return [key, Number(value)];
+      }),
+  );
 const save = () =>
   fs.writeFileSync(
     path.join(root, "rehearsal.json"),
     JSON.stringify(evidence, null, 2) + "\n",
   );
 const record = (step, data) => {
-  evidence.steps.push({ step, ...data });
+  const memoryCurrent = Number(readMemory("memory.current"));
+  const memoryPeak = Number(readMemory("memory.peak"));
+  evidence.steps.push({ step, ...data, memoryCurrent, memoryPeak });
   save();
   console.log(step, JSON.stringify(data));
 };
+
+// /proc is the private PID namespace. Do not export argv or environment.
+function processTree() {
+  return fs
+    .readdirSync("/proc")
+    .filter((name) => /^\d+$/.test(name))
+    .flatMap((pid) => {
+      try {
+        const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+        const close = stat.lastIndexOf(")");
+        const [state, parent, group, session] = stat
+          .slice(close + 2)
+          .split(" ");
+        assert.equal(fs.readFileSync(`/proc/${pid}/cgroup`, "utf8"), cgroup);
+        return [
+          {
+            pid: Number(pid),
+            parent: Number(parent),
+            group: Number(group),
+            session: Number(session),
+            name: stat.slice(stat.indexOf("(") + 1, close),
+            state,
+          },
+        ];
+      } catch (error) {
+        if (error.code !== "ENOENT" && error.code !== "ESRCH") throw error;
+        return [];
+      }
+    });
+}
 
 function own(label, executable, args, env = process.env) {
   const log = path.join(control, label + ".log");
@@ -159,6 +201,22 @@ async function main() {
     proxySha256: digest(path.join(root, "bin/codex_remote_proxy")),
     appServerSha256: digest(path.join(root, "bin/codex")),
   };
+  let sampledPeak;
+  memorySampler = setInterval(() => {
+    const current = Number(readMemory("memory.current"));
+    if (current <= (sampledPeak?.current ?? 0)) return;
+    const { anon, file, kernel, sock, shmem } = readCounters("memory.stat");
+    sampledPeak = {
+      current,
+      anon,
+      file,
+      kernel,
+      sock,
+      shmem,
+      afterStep: evidence.steps.at(-1)?.step,
+    };
+    evidence.sampledMemoryPeak = sampledPeak;
+  }, 100).unref();
 
   const alias = path.join(control, "app-server-" + process.pid + ".sock");
   const appLog = own("app-server", path.join(root, "bin/codex"), [
@@ -200,26 +258,89 @@ async function main() {
     appReply.split("\n").find((line) => line.includes('"id":1')),
   );
   assert.equal(initialized.result.codexHome, process.env.CODEX_HOME);
+  initialize.stdin.write(
+    '{"method":"initialized"}\n' +
+      '{"id":2,"method":"account/read","params":{"refreshToken":false}}\n',
+  );
+  const account = await until("account/read through production proxy", () =>
+    appReply
+      .split("\n")
+      .slice(0, -1)
+      .map(JSON.parse)
+      .find((row) => row.id === 2),
+  );
+  assert.equal(account.result?.account, null);
   record("app-server", {
     privateSocket: true,
     initialized: true,
+    accountAuthenticated: false,
     inheritedCgroup: true,
   });
 
-  const sample = randomBytes(1024 * 1024);
+  const chunkSizes = fs
+    .readFileSync(path.join(control, "bootstrap-chunks.csv"), "utf8")
+    .trim()
+    .split(/\r?\n/)
+    .slice(1)
+    .map((row, index) => {
+      const [sequence, start, end, size] = row.split(",").map(Number);
+      assert.equal(sequence, index);
+      assert.equal(end - start, size);
+      assert.ok(Number.isSafeInteger(size) && size > 0);
+      return size;
+    });
+  const replaySize = chunkSizes.reduce((sum, size) => sum + size, 0);
+  assert.equal(chunkSizes.length, 135);
+  assert.equal(replaySize, 7956397);
+  const encodeFixture = (fixture) =>
+    JSON.stringify({ statsigPayload: JSON.stringify({ fixture }) });
+  const payloadSize = replaySize - Buffer.byteLength(encodeFixture(""));
+  const payload = randomBytes(Math.ceil(payloadSize / 2))
+    .toString("hex")
+    .slice(0, payloadSize);
+  const sample = Buffer.from(encodeFixture(payload));
+  assert.equal(sample.length, replaySize);
   const expected = createHash("sha256").update(sample).digest("hex");
   let upstreamHits = 0;
+  let heldSourceClosed = false;
   const upstream = http.createServer((req, res) => {
+    if (req.url === "/statsig/bootstrap?held") {
+      upstreamHits++;
+      res.once("close", () => {
+        heldSourceClosed = !res.writableFinished;
+      });
+      res.writeHead(200, { "content-type": "application/json" });
+      res.write(sample.subarray(0, chunkSizes[0]));
+      return;
+    }
     if (req.url !== "/statsig/bootstrap") {
       res.writeHead(404).end();
       return;
     }
     upstreamHits++;
     res.writeHead(200, {
-      "content-type": "application/octet-stream",
+      "content-type": "application/json",
       "content-length": sample.length,
     });
-    res.end(sample);
+    let offset = 0;
+    let index = 0;
+    function writeNext(error) {
+      if (error || res.destroyed) return;
+      if (index === chunkSizes.length) {
+        res.end();
+        return;
+      }
+      const end = offset + chunkSizes[index++];
+      const chunk = sample.subarray(offset, end);
+      offset = end;
+      res.write(chunk, writeNext);
+    }
+    writeNext();
+  });
+  record("bootstrap-fixture", {
+    decodedBytes: replaySize,
+    upstreamWrites: chunkSizes.length,
+    syntheticJson: true,
   });
   const upstreamPort = await listen(upstream);
   const ephemeral = net.createServer();
@@ -246,11 +367,12 @@ async function main() {
 const fetch = globalThis.fetch.bind(globalThis);
 globalThis.fetch = (input, init) => {
   const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-  if (url !== ${JSON.stringify(fixtureUrl)}) return fetch(input, init);
+  const base = ${JSON.stringify(fixtureUrl)};
+  if (url !== base && url !== base + "?held") return fetch(input, init);
   const target = new URL(process.env.REHEARSAL_UPSTREAM_URL);
   if (target.protocol !== "http:" || target.hostname !== "127.0.0.1")
     throw Error("Invalid local body fixture");
-  return fetch(new URL("/statsig/bootstrap", target), { method: "GET", signal: init?.signal });
+  return fetch(new URL("/statsig/bootstrap" + url.slice(base.length), target), { method: "GET", signal: init?.signal });
 };
 `,
     { mode: 0o600 },
@@ -301,7 +423,7 @@ globalThis.fetch = (input, init) => {
         })
         .on("error", reject);
     });
-  async function ipcProbe(release) {
+  async function ipcProbe(release, stopWhileReading) {
     const { WebSocket } = require("ws");
     const { SharedWebSocketTransport, sharedTransportProtocol } = require(
       path.join(root, "B/src/shared/websocket-transport.js"),
@@ -424,6 +546,38 @@ globalThis.fetch = (input, init) => {
         abort: close,
       });
       const fetch = session.getRemoteMain().services.httpFetch;
+      if (stopWhileReading) {
+        const { response } = await fetch.fetch("active-shutdown", {
+          url: fixtureUrl + "?held",
+          method: "GET",
+          headers: {},
+          retry: false,
+        });
+        assert.equal(response.status, 200);
+        const reader = response.body.getReader();
+        let firstBytes = 0;
+        while (firstBytes < chunkSizes[0]) {
+          const next = await reader.read();
+          assert.ok(!next.done && next.value.byteLength > 0);
+          firstBytes += next.value.byteLength;
+        }
+        assert.equal(firstBytes, chunkSizes[0]);
+        const started = performance.now();
+        const interrupted = reader.read().then(
+          () => {
+            throw Error("Active response ended without a reader rejection");
+          },
+          () => performance.now() - started,
+        );
+        const [readerRejectedMs] = await Promise.all([
+          Promise.race([interrupted, delay(8000, undefined, { ref: false })]),
+          stopWhileReading(),
+        ]);
+        assert.ok(Number.isFinite(readerRejectedMs));
+        await until("held upstream socket closed", () => heldSourceClosed);
+        assert.ok(closed);
+        return { ipc, firstBytes, readerRejectedMs, heldSourceClosed };
+      }
       const bodies = await Promise.race([
         Promise.all(
           [0, 1].map(async (id) => {
@@ -441,9 +595,12 @@ globalThis.fetch = (input, init) => {
                   error: String(result.error).slice(0, 140),
                 };
               const bytes = await result.response.arrayBuffer();
+              const json = JSON.parse(new TextDecoder().decode(bytes));
               return {
                 id,
                 bytes: bytes.byteLength,
+                nestedJsonValid:
+                  typeof JSON.parse(json.statsigPayload).fixture === "string",
                 sha256: createHash("sha256")
                   .update(new Uint8Array(bytes))
                   .digest("hex"),
@@ -453,7 +610,7 @@ globalThis.fetch = (input, init) => {
             }
           }),
         ),
-        delay(18_000, [{ timeout: true }], { ref: false }),
+        delay(30_000, [{ timeout: true }], { ref: false }),
       ]);
       return { ipc, bodies };
     } finally {
@@ -511,7 +668,6 @@ globalThis.fetch = (input, init) => {
   }
 
   async function health(release, label) {
-    const { ipc, bodies } = await ipcProbe(release);
     const context = await browser.newContext({ ignoreHTTPSErrors: true });
     try {
       const page = await context.newPage();
@@ -535,23 +691,31 @@ globalThis.fetch = (input, init) => {
         release === "B" ? "codex-ipc-budget-v1" : "legacy",
       );
       const editor = page.locator('textarea, [contenteditable="true"]').first();
-      const editorVisible = await editor
-        .waitFor({ state: "visible", timeout: 8000 })
-        .then(
+      const [{ ipc, bodies }, editorVisible] = await Promise.all([
+        ipcProbe(release),
+        editor.waitFor({ state: "visible", timeout: 8000 }).then(
           () => true,
           () => false,
+        ),
+      ]);
+      const bodyMatches =
+        bodies.length === 2 &&
+        bodies.every(
+          (row) =>
+            row.sha256 === expected &&
+            row.bytes === sample.length &&
+            row.nestedJsonValid,
         );
+      assert.deepEqual(ipc, { ok: true, correctPath: true });
+      assert.ok(bodyMatches, "Incomplete or corrupt fixture body");
       record(label + "-health", {
         protocol,
         ipc,
         editorVisible,
         bodies,
         upstreamHits,
-        bodyMatches:
-          bodies.length === 2 &&
-          bodies.every(
-            (row) => row.sha256 === expected && row.bytes === sample.length,
-          ),
+        bodyMatches,
+        ...(release === "B" && { processTree: processTree() }),
       });
       return { editorVisible, bodies };
     } finally {
@@ -598,6 +762,7 @@ globalThis.fetch = (input, init) => {
     reconnectCdp.on("Network.webSocketClosed", () => socketCloses++);
     await reconnectPage.goto(origin, { waitUntil: "domcontentloaded" });
     await until("pre-crash browser upgrade", () => upgrades > 0);
+    const crashedAt = performance.now();
     let reloads = 0;
     reconnectPage.on("framenavigated", (frame) => {
       if (frame === reconnectPage.mainFrame()) reloads++;
@@ -616,24 +781,30 @@ globalThis.fetch = (input, init) => {
     await until("recovered listener", () => serving(bridgePort));
     assert.equal(recovered.mode, "diagnostics");
     assert.equal((await document()).status, 200);
-    const browserReloaded = await until(
+    await until(
       "browser reload after reconnect",
       () => reloads > 0 && upgrades > 1,
       10000,
-    ).then(
-      () => true,
-      () => false,
     );
+    const browserReloadedMs = performance.now() - crashedAt;
+    await reconnectPage.waitForFunction(() => !!window.electronBridge);
+    await reconnectPage.reload({ waitUntil: "domcontentloaded" });
+    await until("post-crash browser upgrade", () => upgrades > 2);
     await reconnect.close();
     record("B-crash-recovery", {
       noAutomaticRestart: true,
       recoveredByModeTransition: true,
-      browserReloaded,
+      browserReloaded: true,
+      browserReloadedMs,
       upgrades,
       socketCloses,
       inheritedCgroup: managed(recovered).mode === "diagnostics",
     });
-    await stop({ ...b, child: recovered }, "B");
+    const activeShutdown = await ipcProbe("B", () =>
+      stop({ ...b, child: recovered }, "B"),
+    );
+    assert.deepEqual(activeShutdown.ipc, { ok: true, correctPath: true });
+    record("B-active-stream-shutdown", activeShutdown);
     const after = await activate("A", "A-after");
     assert.deepEqual(after.configuration, a.configuration);
     assert.deepEqual(
@@ -646,6 +817,13 @@ globalThis.fetch = (input, init) => {
       exactRecordedArtifactsAndRuntime: true,
       upstreamHits,
     });
+    assert.ok(
+      Number(readMemory("memory.peak")) <= 1280 * 1024 * 1024,
+      "Full stack exceeded the experimental 1,280 MiB acceptance ceiling",
+    );
+    const memoryEvents = readCounters("memory.events");
+    for (const event of ["max", "oom", "oom_kill", "oom_group_kill"])
+      assert.equal(memoryEvents[event], 0);
   } finally {
     await browser.close();
     relay.close();
@@ -666,11 +844,12 @@ main()
     console.error(error);
   })
   .finally(() => {
+    clearInterval(memorySampler);
     for (const child of children) child.kill("SIGKILL");
     if (fs.existsSync(memory + "/memory.peak")) {
       evidence.memory = {
         peak: Number(readMemory("memory.peak")),
-        events: readMemory("memory.events"),
+        events: readCounters("memory.events"),
       };
     }
     save();

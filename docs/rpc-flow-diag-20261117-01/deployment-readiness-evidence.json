@@ -1,0 +1,1859 @@
+{
+  "validationDate": "2026-11-18",
+  "source": {
+    "repositoryHeadAtStart": "2b6bc38",
+    "candidate": "122499e",
+    "extractedWindowCoreSourceSha256": "73f93b81152bff48cd27bcebcf27c430fb763e5c7418c67824950f4092ba933d",
+    "exactInstalledATreeSha256": "de25bc2c298d15e1e0c1a9af5610476118330852e2e14e5e1020898bf71c92d2",
+    "productionLauncherDeploymentJsonSha256": "795108dd0f52a0a5656af65eb58c012623c39565eaf96ca65547a48e340cf95d",
+    "productionLauncherModeFileSha256": "83d7d4df18591f6a966c7999355338c625e5a2f7c9cb0c35f11d3ed9f725e022",
+    "chromiumVersion": "158.0.8127.18"
+  },
+  "productionReadOnlyChecks": {
+    "desktop": {
+      "pid": 2397437,
+      "startLocal": "2026-11-17T21:10:37+09:00",
+      "presentBeforeAndAfter": true
+    },
+    "launcher": {
+      "pid": 2394939,
+      "startLocal": "2026-11-17T20:56:01+09:00",
+      "presentBeforeAndAfter": true,
+      "mode": "normal"
+    },
+    "desktopAncestorsNearestFirst": [
+      2394939,
+      2394938,
+      2394937,
+      2394933,
+      1998410,
+      1582,
+      1457
+    ],
+    "cgroup": "/user.slice/user-1000.slice/session-3.scope",
+    "cgroupMemoryMax": "max",
+    "tailnetPort": 8214,
+    "backend": "127.0.0.1:8214",
+    "proxy": "Tailscale Serve TLS-terminated TCP",
+    "proxyUnit": "tailscaled.service",
+    "originalTreeDigestMatchedBeforeAndAfter": true
+  },
+  "repositoryTests": {
+    "passed": 45,
+    "failed": 0,
+    "skipped": 0
+  },
+  "applicationAndPacketMatrix": {
+    "memoryMaxBytes": 2147483648,
+    "memorySwapMaxBytes": 0,
+    "memoryPeakBytes": 730853376,
+    "memoryEvents": {
+      "low": 0,
+      "high": 0,
+      "max": 0,
+      "oom": 0,
+      "oom_kill": 0,
+      "oom_group_kill": 0
+    },
+    "packetMtu": 1500,
+    "parentLoopbackQdiscUnchanged": true,
+    "allPacketCasesDrained": true,
+    "cases": [
+      {
+        "harness": "application",
+        "profile": "shared-peer-timeout",
+        "variant": "A",
+        "repeat": 0,
+        "result": "transport-stop",
+        "throughputMiBs": 2.5398,
+        "flightBytes": {
+          "item": 1049616,
+          "connection": 1836828,
+          "total": 2361636
+        },
+        "decodedBacklogBytes": {
+          "item": 262144,
+          "connection": 458752,
+          "total": 589824
+        },
+        "forwardReservationPeakBytes": 639203,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501198,
+          "aggregate": 695753
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100062
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 393261,
+            "browser": 49325
+          },
+          "writerBytes": {
+            "host": 131072,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 6033
+          }
+        },
+        "sampledTcpTxBytes": 49161,
+        "closeToRpcDrainMs": 1.921
+      },
+      {
+        "harness": "application",
+        "profile": "shared-peer-timeout",
+        "variant": "B",
+        "repeat": 0,
+        "result": "transport-stop",
+        "throughputMiBs": 2.5449,
+        "flightBytes": {
+          "item": 1049616,
+          "connection": 1836828,
+          "total": 2361636
+        },
+        "decodedBacklogBytes": {
+          "item": 262144,
+          "connection": 524288,
+          "total": 655360
+        },
+        "forwardReservationPeakBytes": 639203,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501198,
+          "aggregate": 695753
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100062
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 393261,
+            "browser": 49325
+          },
+          "writerBytes": {
+            "host": 131072,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 6033
+          }
+        },
+        "sampledTcpTxBytes": 49161,
+        "closeToRpcDrainMs": 1.855
+      },
+      {
+        "harness": "application",
+        "profile": "source-error",
+        "variant": "A",
+        "repeat": 0,
+        "result": "complete",
+        "throughputMiBs": 2.2971,
+        "flightBytes": {
+          "item": 1574424,
+          "connection": 1574424,
+          "total": 3148848
+        },
+        "decodedBacklogBytes": {
+          "item": 393216,
+          "connection": 458752,
+          "total": 786432
+        },
+        "forwardReservationPeakBytes": 890720,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501717,
+          "aggregate": 1003266
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100208
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 393266,
+            "browser": 49248
+          },
+          "writerBytes": {
+            "host": 131072,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 8048
+          }
+        },
+        "sampledTcpTxBytes": 0
+      },
+      {
+        "harness": "application",
+        "profile": "source-error",
+        "variant": "B",
+        "repeat": 0,
+        "result": "complete",
+        "throughputMiBs": 2.3552,
+        "flightBytes": {
+          "item": 1574424,
+          "connection": 1574424,
+          "total": 3148848
+        },
+        "decodedBacklogBytes": {
+          "item": 393216,
+          "connection": 393216,
+          "total": 786432
+        },
+        "forwardReservationPeakBytes": 890720,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501717,
+          "aggregate": 1003266
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100208
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 393266,
+            "browser": 49157
+          },
+          "writerBytes": {
+            "host": 131072,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 8048
+          }
+        },
+        "sampledTcpTxBytes": 7
+      },
+      {
+        "harness": "application",
+        "profile": "compressed-variable",
+        "variant": "A",
+        "repeat": 0,
+        "result": "complete",
+        "throughputMiBs": 1.4138,
+        "flightBytes": {
+          "item": 524808,
+          "connection": 1049616,
+          "total": 2099232
+        },
+        "decodedBacklogBytes": {
+          "item": 131072,
+          "connection": 262144,
+          "total": 524288
+        },
+        "forwardReservationPeakBytes": 890720,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501198,
+          "aggregate": 1002396
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100062
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 393261,
+            "browser": 49339
+          },
+          "writerBytes": {
+            "host": 65536,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 8048
+          }
+        },
+        "sampledTcpTxBytes": 2267
+      },
+      {
+        "harness": "application",
+        "profile": "compressed-variable",
+        "variant": "B",
+        "repeat": 0,
+        "result": "complete",
+        "throughputMiBs": 2.4428,
+        "flightBytes": {
+          "item": 524808,
+          "connection": 1049616,
+          "total": 2099232
+        },
+        "decodedBacklogBytes": {
+          "item": 131072,
+          "connection": 262144,
+          "total": 524288
+        },
+        "forwardReservationPeakBytes": 792872,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501198,
+          "aggregate": 904548
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100062
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 393261,
+            "browser": 49521
+          },
+          "writerBytes": {
+            "host": 65536,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 8052
+          }
+        },
+        "sampledTcpTxBytes": 1205
+      },
+      {
+        "harness": "application",
+        "profile": "atomic-boundary",
+        "variant": "A",
+        "repeat": 0,
+        "result": "complete",
+        "throughputMiBs": 2.7034,
+        "flightBytes": {
+          "item": 983817,
+          "connection": 1639695,
+          "total": 3279390
+        },
+        "decodedBacklogBytes": {
+          "item": 245760,
+          "connection": 491520,
+          "total": 901120
+        },
+        "forwardReservationPeakBytes": 890720,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501717,
+          "aggregate": 1003266
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100208
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 393266,
+            "browser": 49162
+          },
+          "writerBytes": {
+            "host": 163840,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 3287
+          }
+        },
+        "sampledTcpTxBytes": 49161
+      },
+      {
+        "harness": "application",
+        "profile": "atomic-boundary",
+        "variant": "B",
+        "repeat": 0,
+        "result": "complete",
+        "throughputMiBs": 2.5791,
+        "flightBytes": {
+          "item": 983817,
+          "connection": 1639695,
+          "total": 3279390
+        },
+        "decodedBacklogBytes": {
+          "item": 245760,
+          "connection": 491520,
+          "total": 901120
+        },
+        "forwardReservationPeakBytes": 890720,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501717,
+          "aggregate": 1003434
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100135
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 393266,
+            "browser": 49157
+          },
+          "writerBytes": {
+            "host": 163840,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 2375
+          }
+        },
+        "sampledTcpTxBytes": 0
+      },
+      {
+        "harness": "application",
+        "profile": "mixed-variable",
+        "variant": "A",
+        "repeat": 0,
+        "result": "complete",
+        "throughputMiBs": 1.8843,
+        "flightBytes": {
+          "item": 648747,
+          "connection": 1297494,
+          "total": 2594988
+        },
+        "decodedBacklogBytes": {
+          "item": 227528,
+          "connection": 374984,
+          "total": 682584
+        },
+        "forwardReservationPeakBytes": 892516,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 502590,
+          "aggregate": 1004686
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100062
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 393918,
+            "browser": 49339
+          },
+          "writerBytes": {
+            "host": 80072,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 8046
+          }
+        },
+        "sampledTcpTxBytes": 0
+      },
+      {
+        "harness": "application",
+        "profile": "mixed-variable",
+        "variant": "B",
+        "repeat": 0,
+        "result": "complete",
+        "throughputMiBs": 2.6681,
+        "flightBytes": {
+          "item": 648747,
+          "connection": 1297494,
+          "total": 2594988
+        },
+        "decodedBacklogBytes": {
+          "item": 227528,
+          "connection": 389520,
+          "total": 697120
+        },
+        "forwardReservationPeakBytes": 890720,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 502590,
+          "aggregate": 1002890
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100062
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 393918,
+            "browser": 49612
+          },
+          "writerBytes": {
+            "host": 80072,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 8046
+          }
+        },
+        "sampledTcpTxBytes": 49161
+      },
+      {
+        "harness": "application",
+        "profile": "bandwidth",
+        "variant": "A",
+        "repeat": 0,
+        "result": "complete",
+        "throughputMiBs": 0.3713,
+        "flightBytes": {
+          "item": 787212,
+          "connection": 1312020,
+          "total": 2361636
+        },
+        "decodedBacklogBytes": {
+          "item": 196608,
+          "connection": 327680,
+          "total": 589824
+        },
+        "forwardReservationPeakBytes": 890720,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501356,
+          "aggregate": 1002549
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100208
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 393266,
+            "browser": 49157
+          },
+          "writerBytes": {
+            "host": 65536,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 4385
+          }
+        },
+        "sampledTcpTxBytes": 0
+      },
+      {
+        "harness": "application",
+        "profile": "bandwidth",
+        "variant": "B",
+        "repeat": 0,
+        "result": "complete",
+        "throughputMiBs": 0.3714,
+        "flightBytes": {
+          "item": 787212,
+          "connection": 1312020,
+          "total": 2361636
+        },
+        "decodedBacklogBytes": {
+          "item": 196608,
+          "connection": 327680,
+          "total": 589824
+        },
+        "forwardReservationPeakBytes": 890720,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501356,
+          "aggregate": 1002549
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100208
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 393266,
+            "browser": 49157
+          },
+          "writerBytes": {
+            "host": 65536,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 4202
+          }
+        },
+        "sampledTcpTxBytes": 49161
+      },
+      {
+        "harness": "application",
+        "profile": "slow",
+        "variant": "A",
+        "repeat": 0,
+        "result": "complete",
+        "throughputMiBs": 2.2845,
+        "flightBytes": {
+          "item": 787212,
+          "connection": 1574424,
+          "total": 3148848
+        },
+        "decodedBacklogBytes": {
+          "item": 196608,
+          "connection": 393216,
+          "total": 786432
+        },
+        "forwardReservationPeakBytes": 890720,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501717,
+          "aggregate": 1003266
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100208
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 393266,
+            "browser": 49247
+          },
+          "writerBytes": {
+            "host": 65536,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 2928
+          }
+        },
+        "sampledTcpTxBytes": 49161
+      },
+      {
+        "harness": "application",
+        "profile": "slow",
+        "variant": "B",
+        "repeat": 0,
+        "result": "complete",
+        "throughputMiBs": 2.2966,
+        "flightBytes": {
+          "item": 787212,
+          "connection": 1312020,
+          "total": 2624040
+        },
+        "decodedBacklogBytes": {
+          "item": 196608,
+          "connection": 327680,
+          "total": 655360
+        },
+        "forwardReservationPeakBytes": 890720,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501717,
+          "aggregate": 1003266
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100208
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 393266,
+            "browser": 49157
+          },
+          "writerBytes": {
+            "host": 65536,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 3477
+          }
+        },
+        "sampledTcpTxBytes": 14
+      },
+      {
+        "harness": "application",
+        "profile": "stall",
+        "variant": "A",
+        "repeat": 0,
+        "result": "complete",
+        "throughputMiBs": 1.6088,
+        "flightBytes": {
+          "item": 787212,
+          "connection": 1574424,
+          "total": 3148848
+        },
+        "decodedBacklogBytes": {
+          "item": 196608,
+          "connection": 393216,
+          "total": 786432
+        },
+        "forwardReservationPeakBytes": 890720,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 506246,
+          "aggregate": 1003266
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100208
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 396985,
+            "browser": 49157
+          },
+          "writerBytes": {
+            "host": 131072,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 8052
+          }
+        },
+        "sampledTcpTxBytes": 49161
+      },
+      {
+        "harness": "application",
+        "profile": "stall",
+        "variant": "B",
+        "repeat": 0,
+        "result": "complete",
+        "throughputMiBs": 1.6204,
+        "flightBytes": {
+          "item": 1049616,
+          "connection": 1574424,
+          "total": 3148848
+        },
+        "decodedBacklogBytes": {
+          "item": 262144,
+          "connection": 458752,
+          "total": 786432
+        },
+        "forwardReservationPeakBytes": 899778,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 506246,
+          "aggregate": 1012324
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100208
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 396985,
+            "browser": 49157
+          },
+          "writerBytes": {
+            "host": 131072,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 8052
+          }
+        },
+        "sampledTcpTxBytes": 49161
+      },
+      {
+        "harness": "application",
+        "profile": "cancel",
+        "variant": "A",
+        "repeat": 0,
+        "result": "complete",
+        "throughputMiBs": 2.2395,
+        "flightBytes": {
+          "item": 1836828,
+          "connection": 2624040,
+          "total": 4198464
+        },
+        "decodedBacklogBytes": {
+          "item": 458752,
+          "connection": 655360,
+          "total": 983040
+        },
+        "forwardReservationPeakBytes": 879750,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501717,
+          "aggregate": 992296
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100608,
+            "browser": 2100529
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 393266,
+            "browser": 49430
+          },
+          "writerBytes": {
+            "host": 65536,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 8048
+          }
+        },
+        "sampledTcpTxBytes": 38347,
+        "actionToSourceCancelMs": 2277.043
+      },
+      {
+        "harness": "application",
+        "profile": "cancel",
+        "variant": "B",
+        "repeat": 0,
+        "result": "complete",
+        "throughputMiBs": 2.1396,
+        "flightBytes": {
+          "item": 1836828,
+          "connection": 2624040,
+          "total": 4460868
+        },
+        "decodedBacklogBytes": {
+          "item": 458752,
+          "connection": 655360,
+          "total": 1114112
+        },
+        "forwardReservationPeakBytes": 879944,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501717,
+          "aggregate": 992490
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100608,
+            "browser": 2100456
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 393266,
+            "browser": 49612
+          },
+          "writerBytes": {
+            "host": 131072,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 8048
+          }
+        },
+        "sampledTcpTxBytes": 49161,
+        "actionToSourceCancelMs": 2440.027
+      },
+      {
+        "harness": "application",
+        "profile": "disconnect",
+        "variant": "A",
+        "repeat": 0,
+        "result": "complete",
+        "throughputMiBs": 1.7102,
+        "flightBytes": {
+          "item": 1312020,
+          "connection": 2099232,
+          "total": 3148848
+        },
+        "decodedBacklogBytes": {
+          "item": 327680,
+          "connection": 524288,
+          "total": 786432
+        },
+        "forwardReservationPeakBytes": 879750,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501549,
+          "aggregate": 992296
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100208
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 393266,
+            "browser": 49794
+          },
+          "writerBytes": {
+            "host": 131072,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 8048
+          }
+        },
+        "sampledTcpTxBytes": 38347,
+        "actionToSourceCancelMs": 9.221,
+        "closeToRpcDrainMs": 2.938
+      },
+      {
+        "harness": "application",
+        "profile": "disconnect",
+        "variant": "B",
+        "repeat": 0,
+        "result": "complete",
+        "throughputMiBs": 1.5788,
+        "flightBytes": {
+          "item": 1049616,
+          "connection": 1836828,
+          "total": 3411252
+        },
+        "decodedBacklogBytes": {
+          "item": 262144,
+          "connection": 458752,
+          "total": 851968
+        },
+        "forwardReservationPeakBytes": 879750,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501549,
+          "aggregate": 992128
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100208
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 393266,
+            "browser": 49612
+          },
+          "writerBytes": {
+            "host": 131072,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 8046
+          }
+        },
+        "sampledTcpTxBytes": 7,
+        "actionToSourceCancelMs": 15.039,
+        "closeToRpcDrainMs": 5.523
+      },
+      {
+        "harness": "packet",
+        "profile": "netem-bandwidth",
+        "variant": "A",
+        "repeat": 0,
+        "result": "complete",
+        "throughputMiBs": 0.55,
+        "flightBytes": {
+          "item": 1049616,
+          "connection": 1574424,
+          "total": 2886444
+        },
+        "decodedBacklogBytes": {
+          "item": 262144,
+          "connection": 393216,
+          "total": 720896
+        },
+        "forwardReservationPeakBytes": 890720,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501198,
+          "aggregate": 1002396
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100135
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 87508,
+            "browser": 49248
+          },
+          "writerBytes": {
+            "host": 131072,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 732
+          }
+        },
+        "sampledTcpTxBytes": 786604
+      },
+      {
+        "harness": "packet",
+        "profile": "netem-bandwidth",
+        "variant": "B",
+        "repeat": 0,
+        "result": "complete",
+        "throughputMiBs": 0.5476,
+        "flightBytes": {
+          "item": 787212,
+          "connection": 1574424,
+          "total": 2886444
+        },
+        "decodedBacklogBytes": {
+          "item": 196608,
+          "connection": 393216,
+          "total": 786432
+        },
+        "forwardReservationPeakBytes": 890720,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501198,
+          "aggregate": 1002396
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100135
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 87508,
+            "browser": 49157
+          },
+          "writerBytes": {
+            "host": 131072,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 732
+          }
+        },
+        "sampledTcpTxBytes": 786604
+      },
+      {
+        "harness": "packet",
+        "profile": "netem-bandwidth",
+        "variant": "B",
+        "repeat": 1,
+        "result": "complete",
+        "throughputMiBs": 0.5492,
+        "flightBytes": {
+          "item": 787212,
+          "connection": 1574424,
+          "total": 2624040
+        },
+        "decodedBacklogBytes": {
+          "item": 196608,
+          "connection": 393216,
+          "total": 720896
+        },
+        "forwardReservationPeakBytes": 890720,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501198,
+          "aggregate": 1002396
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100135
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 87508,
+            "browser": 49157
+          },
+          "writerBytes": {
+            "host": 131072,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 732
+          }
+        },
+        "sampledTcpTxBytes": 786604
+      },
+      {
+        "harness": "packet",
+        "profile": "netem-bandwidth",
+        "variant": "A",
+        "repeat": 1,
+        "result": "complete",
+        "throughputMiBs": 0.5483,
+        "flightBytes": {
+          "item": 1049616,
+          "connection": 1574424,
+          "total": 2624040
+        },
+        "decodedBacklogBytes": {
+          "item": 262144,
+          "connection": 393216,
+          "total": 720896
+        },
+        "forwardReservationPeakBytes": 890720,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501198,
+          "aggregate": 1002396
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100135
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 87508,
+            "browser": 49248
+          },
+          "writerBytes": {
+            "host": 131072,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 732
+          }
+        },
+        "sampledTcpTxBytes": 786604
+      },
+      {
+        "harness": "packet",
+        "profile": "netem-variable",
+        "variant": "A",
+        "repeat": 0,
+        "result": "complete",
+        "throughputMiBs": 1.0303,
+        "flightBytes": {
+          "item": 1049616,
+          "connection": 1574424,
+          "total": 2886444
+        },
+        "decodedBacklogBytes": {
+          "item": 262144,
+          "connection": 458752,
+          "total": 720896
+        },
+        "forwardReservationPeakBytes": 890720,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501198,
+          "aggregate": 1002396
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100135
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 87508,
+            "browser": 49248
+          },
+          "writerBytes": {
+            "host": 131072,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 915
+          }
+        },
+        "sampledTcpTxBytes": 786597
+      },
+      {
+        "harness": "packet",
+        "profile": "netem-variable",
+        "variant": "B",
+        "repeat": 0,
+        "result": "complete",
+        "throughputMiBs": 1.7105,
+        "flightBytes": {
+          "item": 1049616,
+          "connection": 1574424,
+          "total": 2624040
+        },
+        "decodedBacklogBytes": {
+          "item": 262144,
+          "connection": 393216,
+          "total": 655360
+        },
+        "forwardReservationPeakBytes": 890720,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501198,
+          "aggregate": 1002396
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100135
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 87508,
+            "browser": 49248
+          },
+          "writerBytes": {
+            "host": 131072,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 915
+          }
+        },
+        "sampledTcpTxBytes": 786590
+      },
+      {
+        "harness": "packet",
+        "profile": "netem-variable",
+        "variant": "B",
+        "repeat": 1,
+        "result": "complete",
+        "throughputMiBs": 1.6925,
+        "flightBytes": {
+          "item": 1049616,
+          "connection": 1836828,
+          "total": 2886444
+        },
+        "decodedBacklogBytes": {
+          "item": 262144,
+          "connection": 458752,
+          "total": 720896
+        },
+        "forwardReservationPeakBytes": 890720,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501198,
+          "aggregate": 1002396
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100135
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 87508,
+            "browser": 49248
+          },
+          "writerBytes": {
+            "host": 131072,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 915
+          }
+        },
+        "sampledTcpTxBytes": 786590
+      },
+      {
+        "harness": "packet",
+        "profile": "netem-variable",
+        "variant": "A",
+        "repeat": 1,
+        "result": "complete",
+        "throughputMiBs": 1.031,
+        "flightBytes": {
+          "item": 1049616,
+          "connection": 1574424,
+          "total": 2886444
+        },
+        "decodedBacklogBytes": {
+          "item": 262144,
+          "connection": 393216,
+          "total": 720896
+        },
+        "forwardReservationPeakBytes": 890720,
+        "combinedReservationUpperBoundBytes": {
+          "connection": 501198,
+          "aggregate": 1002396
+        },
+        "bytes": {
+          "queued": {
+            "host": 2100535,
+            "browser": 2100135
+          },
+          "assembly": {
+            "host": 2100062,
+            "browser": 2100058
+          },
+          "bufferedAmount": {
+            "host": 87508,
+            "browser": 49248
+          },
+          "writerBytes": {
+            "host": 131072,
+            "browser": 0
+          },
+          "priority": {
+            "host": 0,
+            "browser": 915
+          }
+        },
+        "sampledTcpTxBytes": 786590
+      }
+    ]
+  },
+  "stackRehearsal": {
+    "steps": [
+      {
+        "step": "app-server",
+        "privateSocket": true,
+        "initialized": true,
+        "accountAuthenticated": false,
+        "inheritedCgroup": true,
+        "memoryCurrent": 345858048,
+        "memoryPeak": 624541696
+      },
+      {
+        "step": "bootstrap-fixture",
+        "decodedBytes": 7956397,
+        "upstreamWrites": 135,
+        "syntheticJson": true,
+        "memoryCurrent": 377909248,
+        "memoryPeak": 624541696
+      },
+      {
+        "step": "A-before-launch",
+        "configuration": {
+          "mode": "normal",
+          "args": [
+            "/usr/bin/node-22",
+            "/tmp/rpc-shared.final-NirpMD/active/src/server/main.js",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "43523"
+          ],
+          "executable": "/usr/bin/node-22",
+          "cwd": "/tmp/rpc-shared.final-NirpMD/work"
+        },
+        "artifacts": {
+          "src/server/main.js": "ab95984d72f7b13c12b2ed113910bd71417e165f443dfc81b1afe1b0e07efc0b",
+          "src/server/electron/index.js": "b9d08bc0628e06a067023dba3172f042dc00cb64fecedde05e940f33619efcd0",
+          "scratch/asar/package.json": "97e6c90d6760d306852720fcdbc4a2946e54bc406406e1d03711a194955d1e2e",
+          "scratch/asar/.vite/build/main-CqEoQDOU.js": "1899b199e7e5cd34fbb26eac41d7482d926901bced8f97c0932e04c07b63de93",
+          "scratch/asar/.vite/build/startup-requirements-C6B1x9gL.js": "25e69424e28b3103c6f1a94f7e9f5d3f54fe6aa9ba3671b855d5073984883843",
+          "scratch/asar/webview/assets/app-shared-8bd9d0399038.js": "3d004695e4d3ed068b803b0a195260c76d4801b978d6b7a06f39886185282167",
+          "scratch/asar/webview/assets/preload.js": "bfb70a81533f1d4800c6aba1afae903df0c7642e14f875cd779adae5bf62046d",
+          "scratch/asar/webview/assets/preload.js.br": "582ad6cd258faaa38d39bcd3fcb36f9f91195436fac7ef9b416902dc35cd3933",
+          "scratch/asar/webview/assets/preload.js.gz": "8efccf0e90ea19b781b58e3cc845d4d536cde4af09290a4a94dee4e014e7fb61"
+        },
+        "tls": {
+          "status": 200,
+          "verified": true,
+          "tls": "TLSv1.3"
+        },
+        "memoryCurrent": 637329408,
+        "memoryPeak": 637612032
+      },
+      {
+        "step": "A-before-health",
+        "protocol": [
+          "legacy"
+        ],
+        "ipc": {
+          "ok": true,
+          "correctPath": true
+        },
+        "editorVisible": false,
+        "bodies": [
+          {
+            "id": 0,
+            "bytes": 7956397,
+            "nestedJsonValid": true,
+            "sha256": "220b7bc118302f1b3007f27ab134121870b929f8a2923ef5977c94daeec91aef"
+          },
+          {
+            "id": 1,
+            "bytes": 7956397,
+            "nestedJsonValid": true,
+            "sha256": "220b7bc118302f1b3007f27ab134121870b929f8a2923ef5977c94daeec91aef"
+          }
+        ],
+        "upstreamHits": 2,
+        "bodyMatches": true,
+        "memoryCurrent": 1322405888,
+        "memoryPeak": 1333612544
+      },
+      {
+        "step": "A-before-stop",
+        "listenerReleased": true,
+        "childReaped": true,
+        "code": 0,
+        "memoryCurrent": 648843264,
+        "memoryPeak": 1333612544
+      },
+      {
+        "step": "B-launch",
+        "configuration": {
+          "mode": "normal",
+          "args": [
+            "/usr/bin/node-22",
+            "/tmp/rpc-shared.final-NirpMD/active/src/server/main.js",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "43523"
+          ],
+          "executable": "/usr/bin/node-22",
+          "cwd": "/tmp/rpc-shared.final-NirpMD/work"
+        },
+        "artifacts": {
+          "src/server/main.js": "4abd2cf5a2043d85eeb282e80cfc8b85d43a32f71153b46b1f986cfec6cbd7f4",
+          "src/server/electron/index.js": "b9d08bc0628e06a067023dba3172f042dc00cb64fecedde05e940f33619efcd0",
+          "scratch/asar/package.json": "97e6c90d6760d306852720fcdbc4a2946e54bc406406e1d03711a194955d1e2e",
+          "scratch/asar/.vite/build/main-CqEoQDOU.js": "18cbca9e257d5437fdb8161ac9de88f19b94230cc88413940b2e9f2762bb9d66",
+          "scratch/asar/.vite/build/startup-requirements-C6B1x9gL.js": "b87828b3d85706d0dfe40976ebbeea8525102189efe841388687a73492db6a6a",
+          "scratch/asar/webview/assets/app-shared-8bd9d0399038.js": "883b1095271264d70f157b92c90669c7370399c82b8848d52fbaecd85e31d594",
+          "scratch/asar/webview/assets/preload.js": "365c6427f0e96a2be8be4a89687000c7fe2f46f4330026fd170f06734e3b2908",
+          "scratch/asar/webview/assets/preload.js.br": "fcbb7035665281b14703b1650406a4e79a6e14bf711a77c569add053c66e523d",
+          "scratch/asar/webview/assets/preload.js.gz": "ac14c53fcdea97aac933550c97b07738ce083b6611fd5071a5e569d9cae9393c"
+        },
+        "tls": {
+          "status": 200,
+          "verified": true,
+          "tls": "TLSv1.3"
+        },
+        "memoryCurrent": 732225536,
+        "memoryPeak": 1333612544
+      },
+      {
+        "step": "B-health",
+        "protocol": [
+          "codex-ipc-budget-v1"
+        ],
+        "ipc": {
+          "ok": true,
+          "correctPath": true
+        },
+        "editorVisible": false,
+        "bodies": [
+          {
+            "id": 0,
+            "bytes": 7956397,
+            "nestedJsonValid": true,
+            "sha256": "220b7bc118302f1b3007f27ab134121870b929f8a2923ef5977c94daeec91aef"
+          },
+          {
+            "id": 1,
+            "bytes": 7956397,
+            "nestedJsonValid": true,
+            "sha256": "220b7bc118302f1b3007f27ab134121870b929f8a2923ef5977c94daeec91aef"
+          }
+        ],
+        "upstreamHits": 4,
+        "bodyMatches": true,
+        "processTree": [
+          {
+            "pid": 1,
+            "parent": 0,
+            "group": 0,
+            "session": 0,
+            "name": "bwrap",
+            "state": "S"
+          },
+          {
+            "pid": 115,
+            "parent": 90,
+            "group": 83,
+            "session": 83,
+            "name": "chrome",
+            "state": "S"
+          },
+          {
+            "pid": 140,
+            "parent": 83,
+            "group": 83,
+            "session": 83,
+            "name": "chrome",
+            "state": "S"
+          },
+          {
+            "pid": 142,
+            "parent": 91,
+            "group": 83,
+            "session": 83,
+            "name": "chrome",
+            "state": "S"
+          },
+          {
+            "pid": 2,
+            "parent": 1,
+            "group": 0,
+            "session": 0,
+            "name": "bash",
+            "state": "S"
+          },
+          {
+            "pid": 29,
+            "parent": 8,
+            "group": 6,
+            "session": 6,
+            "name": "codex",
+            "state": "S"
+          },
+          {
+            "pid": 333,
+            "parent": 83,
+            "group": 83,
+            "session": 83,
+            "name": "chrome",
+            "state": "S"
+          },
+          {
+            "pid": 420,
+            "parent": 8,
+            "group": 6,
+            "session": 6,
+            "name": "node-22",
+            "state": "S"
+          },
+          {
+            "pid": 427,
+            "parent": 420,
+            "group": 6,
+            "session": 6,
+            "name": "node-22",
+            "state": "S"
+          },
+          {
+            "pid": 487,
+            "parent": 91,
+            "group": 83,
+            "session": 83,
+            "name": "chrome",
+            "state": "S"
+          },
+          {
+            "pid": 497,
+            "parent": 91,
+            "group": 83,
+            "session": 83,
+            "name": "chrome",
+            "state": "S"
+          },
+          {
+            "pid": 498,
+            "parent": 91,
+            "group": 83,
+            "session": 83,
+            "name": "chrome",
+            "state": "S"
+          },
+          {
+            "pid": 5,
+            "parent": 1,
+            "group": 5,
+            "session": 5,
+            "name": "tmux: server",
+            "state": "S"
+          },
+          {
+            "pid": 564,
+            "parent": 427,
+            "group": 6,
+            "session": 6,
+            "name": "websocat",
+            "state": "S"
+          },
+          {
+            "pid": 6,
+            "parent": 5,
+            "group": 6,
+            "session": 6,
+            "name": "bash",
+            "state": "S"
+          },
+          {
+            "pid": 63,
+            "parent": 8,
+            "group": 6,
+            "session": 6,
+            "name": "websocat",
+            "state": "S"
+          },
+          {
+            "pid": 644,
+            "parent": 2,
+            "group": 0,
+            "session": 0,
+            "name": "sleep",
+            "state": "S"
+          },
+          {
+            "pid": 8,
+            "parent": 6,
+            "group": 6,
+            "session": 6,
+            "name": "node-22",
+            "state": "R"
+          },
+          {
+            "pid": 83,
+            "parent": 8,
+            "group": 83,
+            "session": 83,
+            "name": "chrome",
+            "state": "S"
+          },
+          {
+            "pid": 85,
+            "parent": 1,
+            "group": 84,
+            "session": 84,
+            "name": "chrome_crashpad",
+            "state": "S"
+          },
+          {
+            "pid": 87,
+            "parent": 1,
+            "group": 86,
+            "session": 86,
+            "name": "chrome_crashpad",
+            "state": "S"
+          },
+          {
+            "pid": 90,
+            "parent": 83,
+            "group": 83,
+            "session": 83,
+            "name": "chrome",
+            "state": "S"
+          },
+          {
+            "pid": 91,
+            "parent": 83,
+            "group": 83,
+            "session": 83,
+            "name": "chrome",
+            "state": "S"
+          }
+        ],
+        "memoryCurrent": 1343774720,
+        "memoryPeak": 1345114112
+      },
+      {
+        "step": "B-crash-recovery",
+        "noAutomaticRestart": true,
+        "recoveredByModeTransition": true,
+        "browserReloaded": true,
+        "browserReloadedMs": 2426.2235040000014,
+        "upgrades": 4,
+        "socketCloses": 2,
+        "inheritedCgroup": true,
+        "memoryCurrent": 941244416,
+        "memoryPeak": 1345114112
+      },
+      {
+        "step": "B-stop",
+        "listenerReleased": true,
+        "childReaped": true,
+        "code": 0,
+        "memoryCurrent": 658644992,
+        "memoryPeak": 1345114112
+      },
+      {
+        "step": "B-active-stream-shutdown",
+        "ipc": {
+          "ok": true,
+          "correctPath": true
+        },
+        "firstBytes": 16384,
+        "readerRejectedMs": 409.5355920000002,
+        "heldSourceClosed": true,
+        "memoryCurrent": 658632704,
+        "memoryPeak": 1345114112
+      },
+      {
+        "step": "A-after-launch",
+        "configuration": {
+          "mode": "normal",
+          "args": [
+            "/usr/bin/node-22",
+            "/tmp/rpc-shared.final-NirpMD/active/src/server/main.js",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            "43523"
+          ],
+          "executable": "/usr/bin/node-22",
+          "cwd": "/tmp/rpc-shared.final-NirpMD/work"
+        },
+        "artifacts": {
+          "src/server/main.js": "ab95984d72f7b13c12b2ed113910bd71417e165f443dfc81b1afe1b0e07efc0b",
+          "src/server/electron/index.js": "b9d08bc0628e06a067023dba3172f042dc00cb64fecedde05e940f33619efcd0",
+          "scratch/asar/package.json": "97e6c90d6760d306852720fcdbc4a2946e54bc406406e1d03711a194955d1e2e",
+          "scratch/asar/.vite/build/main-CqEoQDOU.js": "1899b199e7e5cd34fbb26eac41d7482d926901bced8f97c0932e04c07b63de93",
+          "scratch/asar/.vite/build/startup-requirements-C6B1x9gL.js": "25e69424e28b3103c6f1a94f7e9f5d3f54fe6aa9ba3671b855d5073984883843",
+          "scratch/asar/webview/assets/app-shared-8bd9d0399038.js": "3d004695e4d3ed068b803b0a195260c76d4801b978d6b7a06f39886185282167",
+          "scratch/asar/webview/assets/preload.js": "bfb70a81533f1d4800c6aba1afae903df0c7642e14f875cd779adae5bf62046d",
+          "scratch/asar/webview/assets/preload.js.br": "582ad6cd258faaa38d39bcd3fcb36f9f91195436fac7ef9b416902dc35cd3933",
+          "scratch/asar/webview/assets/preload.js.gz": "8efccf0e90ea19b781b58e3cc845d4d536cde4af09290a4a94dee4e014e7fb61"
+        },
+        "tls": {
+          "status": 200,
+          "verified": true,
+          "tls": "TLSv1.3"
+        },
+        "memoryCurrent": 741294080,
+        "memoryPeak": 1345114112
+      },
+      {
+        "step": "A-after-health",
+        "protocol": [
+          "legacy"
+        ],
+        "ipc": {
+          "ok": true,
+          "correctPath": true
+        },
+        "editorVisible": false,
+        "bodies": [
+          {
+            "id": 0,
+            "bytes": 7956397,
+            "nestedJsonValid": true,
+            "sha256": "220b7bc118302f1b3007f27ab134121870b929f8a2923ef5977c94daeec91aef"
+          },
+          {
+            "id": 1,
+            "bytes": 7956397,
+            "nestedJsonValid": true,
+            "sha256": "220b7bc118302f1b3007f27ab134121870b929f8a2923ef5977c94daeec91aef"
+          }
+        ],
+        "upstreamHits": 7,
+        "bodyMatches": true,
+        "memoryCurrent": 1375256576,
+        "memoryPeak": 1377824768
+      },
+      {
+        "step": "A-after-stop",
+        "listenerReleased": true,
+        "childReaped": true,
+        "code": 0,
+        "memoryCurrent": 678281216,
+        "memoryPeak": 1377824768
+      },
+      {
+        "step": "rollback",
+        "exactRecordedArtifactsAndRuntime": true,
+        "upstreamHits": 7,
+        "memoryCurrent": 678264832,
+        "memoryPeak": 1377824768
+      }
+    ],
+    "isolation": {
+      "network": "net:[4026532571]",
+      "parentNetwork": "net:[4026531840]",
+      "memoryMax": 2147483648,
+      "memorySwapMax": 0,
+      "cgroup": "0::/user.slice/user-1000.slice/user@1000.service/app.slice/run-u15203.service",
+      "launcherSha256": "0b7c058e698bba7cf35d776eb9acf60daac526158a4e5a5ffd39268abd1c1db9",
+      "proxySha256": "3587a863875b23211e260592aec9123d0eab36e87bb412d99fecb351e72a73cc",
+      "appServerSha256": "b452ca20f838a8855a88a41050ee4a694033fff4ea3ecdad5633e6e0e8d13f2b"
+    },
+    "sampledMemoryPeak": {
+      "current": 1376636928,
+      "anon": 1037639680,
+      "file": 305057792,
+      "kernel": 30904320,
+      "sock": 8192,
+      "shmem": 6361088,
+      "afterStep": "A-after-launch"
+    },
+    "error": "AssertionError [ERR_ASSERTION]: Full stack exceeded the experimental 1,280 MiB acceptance ceiling",
+    "memory": {
+      "peak": 1377824768,
+      "events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      }
+    }
+  },
+  "initialStackRehearsal": {
+    "memory": {
+      "peak": 1454252032,
+      "events": {
+        "low": 0,
+        "high": 0,
+        "max": 0,
+        "oom": 0,
+        "oom_kill": 0,
+        "oom_group_kill": 0
+      }
+    },
+    "memoryAcceptancePassed": false,
+    "exactPrivateRollbackPassed": true,
+    "browserReloadedMs": 2302.072873000001,
+    "activeReaderRejectedMs": 211.18473700000322
+  }
+}

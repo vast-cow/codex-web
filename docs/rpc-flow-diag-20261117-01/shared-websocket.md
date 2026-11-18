@@ -2,6 +2,8 @@
 
 **NO-GO for a live A/B trial.** This work continues `26a8a94` and `cf651e7`. The experiment requires an explicit server flag, a separately built preload and a matching WebSocket subprotocol. The work used read-only production inspection and private builds, listeners, sockets, profiles and processes.
 
+The follow-up records the [final isolated reruns, acceptance thresholds, and production procedure](deployment-readiness.md).
+
 ## Send-path inventory
 
 The production socket is `/__backend/ipc`. The previous admission fixture covered the extracted host's forward RPC byte writes and gave its small forward controls headroom. It monitored reverse ACKs. Every production bridge path below used the existing socket or browser queue directly.
@@ -85,3 +87,5 @@ Use a new `/tmp/rpc-shared.*` stage. Copy the z170-1 launcher, read-only A relea
 Set `PLAYWRIGHT_MODULE` and `CHROMIUM_PATH` to local installations. Use a fresh output path and a transient user service with `MemoryMax=2G`, `MemorySwapMax=0`, and `OOMPolicy=stop`. Run `rpc-concurrency.cjs OUTPUT` with `RPC_CONCURRENCY_POLICIES=shared-stop` and select profiles with `RPC_CONCURRENCY_PROFILES`. For packet tests, set `RPC_PARENT_NETNS` and `RPC_PARENT_QDISC` from the parent and use `unshare --user --map-root-user --net node rpc-netem.cjs OUTPUT` in the transient unit.
 
 For the stack rehearsal, place the launcher and both harness files `rpc-shared-rehearsal.cjs` and `rpc-core.cjs` in `control/`. Stage the CLI and proxy in `bin/`, add a localhost certificate/key in `control/`, and create a disposable `profile/` and `work/`. In bubblewrap bind the stage writable, mask the live home, mount a fresh `/tmp` and bind the stage's mode-0700 `control/daemon` directory at `/tmp/codex-daemon-UID`. Set home, Codex home, XDG and temporary paths inside the profile and bind the Chromium dependencies read-only. Set `REHEARSAL_PARENT_NETNS` and `REHEARSAL_PRODUCTION_HOME` for the isolation checks. Run `node control/rpc-shared-rehearsal.cjs STAGE` in the transient unit.
+
+The current harness also reads the recorded source sizes from `control/bootstrap-chunks.csv`. Copy [the correlated timing CSV](../bootstrap-diag-20261117-01/chunk-timings.csv) to that path before running it.
