@@ -19,6 +19,24 @@ const socket = path.join(control, "daemon", socketName);
 const evidence = { steps: [] };
 const fixtureUrl = "data:application/vnd.codex-isolated,statsig/bootstrap";
 const children = new Set();
+const twoPhase = process.env.REHEARSAL_TWO_PHASE === "1";
+const idleSeconds = Number(process.env.REHEARSAL_IDLE_SECONDS || 180);
+assert.ok(
+  Number.isInteger(idleSeconds) && idleSeconds >= 30 && idleSeconds <= 300,
+);
+if (twoPhase)
+  evidence.memoryPolicy = {
+    mode:
+      process.env.REHEARSAL_MEMORY_CHARACTERIZE === "1"
+        ? "characterization-only"
+        : "enforced",
+    startupMiB: 1536,
+    settledMiB: 1280,
+    idleSeconds,
+    sustainedSeconds: 5,
+    rollingSecondsAbove: 10,
+    rollingWindowSeconds: 60,
+  };
 let memorySampler;
 let memoryObserver;
 const digest = (file) => {
@@ -203,6 +221,16 @@ async function main() {
     memoryObserver = require("./rpc-memory-observer.cjs").observe(
       process.env.REHEARSAL_MEMORY_DIRECTORY,
       memory,
+      (reason) => {
+        evidence.error = "Memory policy stop: " + reason;
+        evidence.memory = {
+          peak: Number(readMemory("memory.peak")),
+          events: readCounters("memory.events"),
+        };
+        save();
+        // Exiting the private tmux job ends the containing unit and all members.
+        process.exit(1);
+      },
     );
     require("./rpc-memory-node.cjs");
   }
@@ -323,6 +351,10 @@ async function main() {
   assert.equal(sample.length, replaySize);
   const expected = createHash("sha256").update(sample).digest("hex");
   let upstreamHits = 0;
+  let upstreamActive = 0;
+  let upstreamPeakActive = 0;
+  let batch = [];
+  let batchRemaining = 0;
   let heldSourceClosed = false;
   const upstream = http.createServer((req, res) => {
     if (req.url === "/statsig/bootstrap?held") {
@@ -339,6 +371,9 @@ async function main() {
       return;
     }
     upstreamHits++;
+    upstreamActive++;
+    upstreamPeakActive = Math.max(upstreamPeakActive, upstreamActive);
+    res.once("close", () => upstreamActive--);
     res.writeHead(200, {
       "content-type": "application/json",
       "content-length": sample.length,
@@ -356,7 +391,14 @@ async function main() {
       offset = end;
       res.write(chunk, writeNext);
     }
-    writeNext();
+    if (batchRemaining) {
+      batch.push(writeNext);
+      if (--batchRemaining === 0) {
+        const pending = batch;
+        batch = [];
+        pending.forEach((write) => write());
+      }
+    } else writeNext();
   });
   record("bootstrap-fixture", {
     decodedBytes: replaySize,
@@ -643,6 +685,8 @@ globalThis.fetch = (input, init) => {
   }
 
   async function activate(release, label) {
+    memoryObserver?.lifecycle();
+    memoryObserver?.phase(label + "-startup");
     const next = path.join(root, "active-next");
     fs.symlinkSync(release, next);
     fs.renameSync(next, deploy.candidateDirectory);
@@ -690,6 +734,85 @@ globalThis.fetch = (input, init) => {
     return { launcher, child, configuration };
   }
 
+  async function browserProbe(page) {
+    return page.evaluate(
+      async ({ core, fixtureUrl }) => {
+        if (!window.__memoryFetch) {
+          const { Session } = new Function("__codexRpcDiag", "t", core)(
+            undefined,
+            (fn) => {
+              let done = false;
+              return () => {
+                if (!done) {
+                  done = true;
+                  fn();
+                }
+              };
+            },
+          );
+          let adapter;
+          if (window.__codexWebConnectAppHost)
+            adapter = window.__codexWebConnectAppHost();
+          else {
+            const channel = new MessageChannel();
+            const queue = [];
+            let waiting;
+            channel.port1.onmessage = ({ data }) => {
+              if (waiting) {
+                waiting(data);
+                waiting = undefined;
+              } else queue.push(data);
+            };
+            window.postMessage(
+              { type: "connect-app-host", port: channel.port2 },
+              location.origin,
+              [channel.port2],
+            );
+            adapter = {
+              encodingLevel: "jsonCompatible",
+              send: (data) => channel.port1.postMessage(data),
+              receive: () =>
+                queue.length
+                  ? Promise.resolve(queue.shift())
+                  : new Promise((resolve) => {
+                      waiting = resolve;
+                    }),
+              abort: () => channel.port1.close(),
+            };
+          }
+          window.__memoryFetch = new Session(
+            adapter,
+          ).getRemoteMain().services.httpFetch;
+        }
+        return Promise.all(
+          [0, 1].map(async (id) => {
+            const { response } = await window.__memoryFetch.fetch(
+              "memory-browser-" + id,
+              {
+                url: fixtureUrl,
+                method: "GET",
+                headers: {},
+                retry: false,
+              },
+            );
+            const bytes = await response.arrayBuffer();
+            const json = JSON.parse(new TextDecoder().decode(bytes));
+            const hash = await crypto.subtle.digest("SHA-256", bytes);
+            return {
+              bytes: bytes.byteLength,
+              nestedJsonValid:
+                typeof JSON.parse(json.statsigPayload).fixture === "string",
+              sha256: Array.from(new Uint8Array(hash), (byte) =>
+                byte.toString(16).padStart(2, "0"),
+              ).join(""),
+            };
+          }),
+        );
+      },
+      { core: browserCore, fixtureUrl },
+    );
+  }
+
   async function health(release, label) {
     memoryObserver?.phase(label + "-bootstrap");
     const context = await browser.newContext({ ignoreHTTPSErrors: true });
@@ -717,8 +840,32 @@ globalThis.fetch = (input, init) => {
         release === "B" ? "codex-ipc-budget-v1" : "legacy",
       );
       const editor = page.locator('textarea, [contenteditable="true"]').first();
+      const wave = async () => {
+        if (twoPhase) batchRemaining = 4;
+        const [peer, browserBodies] = await Promise.race([
+          Promise.all([
+            ipcProbe(release),
+            twoPhase ? browserProbe(page) : Promise.resolve([]),
+          ]),
+          delay(30_000, undefined, { ref: false }).then(() => {
+            throw Error("Concurrent clients made no terminal progress in 30 s");
+          }),
+        ]);
+        const bodies = [...peer.bodies, ...browserBodies];
+        assert.equal(bodies.length, twoPhase ? 4 : 2);
+        assert.ok(
+          bodies.every(
+            (row) =>
+              row.sha256 === expected &&
+              row.bytes === sample.length &&
+              row.nestedJsonValid,
+          ),
+        );
+        await until("fixture upstream drain", () => upstreamActive === 0, 3000);
+        return { ipc: peer.ipc, bodies };
+      };
       const [{ ipc, bodies }, editorVisible] = await Promise.all([
-        ipcProbe(release).then((result) => {
+        wave().then((result) => {
           memoryObserver?.phase(label + "-fixture-complete");
           return result;
         }),
@@ -728,7 +875,7 @@ globalThis.fetch = (input, init) => {
         ),
       ]);
       const bodyMatches =
-        bodies.length === 2 &&
+        bodies.length === (twoPhase ? 4 : 2) &&
         bodies.every(
           (row) =>
             row.sha256 === expected &&
@@ -744,10 +891,69 @@ globalThis.fetch = (input, init) => {
         bodies,
         upstreamHits,
         bodyMatches,
+        upstreamPeakActive,
         ...(release === "B" && { processTree: processTree() }),
       });
       if (process.env.REHEARSAL_MEMORY_DIRECTORY) {
-        await delay(30_000);
+        if (twoPhase) {
+          // Offline readiness is explicit but is not authenticated SDK readiness.
+          const signIn = page
+            .getByRole("button", { name: /log in|sign in/i })
+            .first();
+          await signIn.waitFor({ state: "visible", timeout: 15000 });
+          assert.ok(await signIn.isEnabled());
+          memoryObserver.ready();
+          record(label + "-ready", {
+            signedOut: true,
+            fixtureEofAndDigest: true,
+            signInUsable: true,
+            upstreamActive,
+          });
+          await until(
+            "readiness plus ten seconds below 1280 MiB",
+            async () => {
+              const ready =
+                (await signIn.isVisible()) &&
+                (await signIn.isEnabled()) &&
+                upstreamActive === 0 &&
+                (await serving(bridgePort));
+              memoryObserver.ready(ready);
+              return ready && memoryObserver.state() === "settled";
+            },
+            90000,
+          );
+          record(label + "-policy-settled", {});
+          // Keep the same real webview alive; prove repeated post-settle work.
+          for (let index = 0; index < 3; index++) {
+            await delay(10_000);
+            const result = await wave();
+            record(label + "-settled-wave-" + index, {
+              bodyMatches: true,
+              bodies: result.bodies,
+              upstreamActive,
+              upstreamPeakActive,
+            });
+          }
+          record(label + "-idle-start", {});
+          for (let second = 0; second < idleSeconds; second++) {
+            await delay(1000);
+            assert.ok(
+              (await signIn.isVisible()) && (await signIn.isEnabled()),
+              "Offline readiness lost",
+            );
+            assert.ok(await serving(bridgePort), "Listener lost during idle");
+            assert.equal(
+              upstreamActive,
+              0,
+              "Upstream queue retained during idle",
+            );
+          }
+          const lastProbe = await wave();
+          record(label + "-idle-end", {
+            healthyAfterIdle: lastProbe.bodies.length === 4,
+            upstreamActive,
+          });
+        } else await delay(30_000);
         record(label + "-settled", {});
       }
       return { editorVisible, bodies };
@@ -798,8 +1004,9 @@ globalThis.fetch = (input, init) => {
         memoryOrder: order,
       });
       assert.ok(
-        Number(readMemory("memory.peak")) <= 1280 * 1024 * 1024,
-        "Full stack exceeded the experimental 1,280 MiB acceptance ceiling",
+        Number(readMemory("memory.peak")) <=
+          (twoPhase ? 1536 : 1280) * 1024 * 1024,
+        "Full stack exceeded the selected experimental acceptance ceiling",
       );
       for (const event of ["max", "oom", "oom_kill", "oom_group_kill"])
         assert.equal(readCounters("memory.events")[event], 0);
@@ -825,6 +1032,10 @@ globalThis.fetch = (input, init) => {
     reconnectCdp.on("Network.webSocketClosed", () => socketCloses++);
     await reconnectPage.goto(origin, { waitUntil: "domcontentloaded" });
     await until("pre-crash browser upgrade", () => upgrades > 0);
+    if (twoPhase) {
+      memoryObserver.lifecycle();
+      record("B-recovery-startup", { plannedFault: true });
+    }
     const crashedAt = performance.now();
     let reloads = 0;
     reconnectPage.on("framenavigated", (frame) => {
@@ -863,6 +1074,7 @@ globalThis.fetch = (input, init) => {
       socketCloses,
       inheritedCgroup: managed(recovered).mode === "diagnostics",
     });
+    if (twoPhase) await health("B", "B-recovery");
     const activeShutdown = await ipcProbe("B", () =>
       stop({ ...b, child: recovered }, "B"),
     );
@@ -881,7 +1093,8 @@ globalThis.fetch = (input, init) => {
       upstreamHits,
     });
     assert.ok(
-      Number(readMemory("memory.peak")) <= 1280 * 1024 * 1024,
+      Number(readMemory("memory.peak")) <=
+        (twoPhase ? 1536 : 1280) * 1024 * 1024,
       "Full stack exceeded the experimental 1,280 MiB acceptance ceiling",
     );
     const memoryEvents = readCounters("memory.events");

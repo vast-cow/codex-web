@@ -97,3 +97,13 @@ test("characterization still stops continuous growth below the warning line", ()
   feed(p, 130200, 1040);
   assert.match(feed(p, 190300, 1080), /continuous growth/);
 });
+
+test("an active characterization excursion cannot skip independent growth checks", () => {
+  const p = new MemoryPolicy(0, true);
+  feed(p, 10200, 1000);
+  feed(p, 70200, 1290);
+  feed(p, 130200, 1330);
+  assert.match(feed(p, 190300, 1370), /continuous growth/);
+  assert.ok(p.violations.has("settled excursion sustained 5 s"));
+  assert.ok(p.violations.has("settled excursions exceed 10 s in rolling 60 s"));
+});

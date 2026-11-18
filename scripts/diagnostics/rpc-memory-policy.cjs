@@ -49,8 +49,10 @@ class MemoryPolicy {
       if (!ready) return stop("readiness lost outside planned recovery");
       if (above) this.aboveSince ??= now;
       else this.aboveSince = undefined;
-      if (this.aboveSince !== undefined && now - this.aboveSince >= 5000)
-        return stop("settled excursion sustained 5 s");
+      if (this.aboveSince !== undefined && now - this.aboveSince >= 5000) {
+        const reason = stop("settled excursion sustained 5 s");
+        if (reason) return reason;
+      }
       // Left-held sample integration; crossing precision is one sample interval.
       const recent = this.history.filter((row) => row.now >= this.settledAt);
       let over = 0;
@@ -61,8 +63,10 @@ class MemoryPolicy {
             recent[i].now - Math.max(now - 60000, recent[i - 1].now),
           );
       }
-      if (over > 10000)
-        return stop("settled excursions exceed 10 s in rolling 60 s");
+      if (over > 10000) {
+        const reason = stop("settled excursions exceed 10 s in rolling 60 s");
+        if (reason) return reason;
+      }
       // Memory growth fails even when all samples stay below the warning line.
       if (now - this.settledAt >= 180000) {
         const medians = [0, 1, 2].map((index) => {

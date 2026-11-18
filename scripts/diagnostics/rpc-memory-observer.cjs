@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const assert = require("node:assert/strict");
 
-function observe(directory, cgroup) {
+function observe(directory, cgroup, onFailure) {
   assert.notEqual(
     fs.readlinkSync("/proc/self/ns/pid"),
     process.env.REHEARSAL_PARENT_PIDNS,
@@ -17,33 +17,54 @@ function observe(directory, cgroup) {
   assert.equal(read("memory.swap.max"), "0");
   let phase = "setup";
   let tick = 0;
+  let policy;
+  let ready = false;
+  const newPolicy = () => {
+    const { MemoryPolicy } = require("./rpc-memory-policy.cjs");
+    return new MemoryPolicy(
+      performance.now(),
+      process.env.REHEARSAL_MEMORY_CHARACTERIZE === "1",
+    );
+  };
+  if (process.env.REHEARSAL_TWO_PHASE === "1") policy = newPolicy();
   function sample(detailed = false) {
     const row = {
       time: Date.now(),
       phase,
       current: Number(read("memory.current")),
       peak: Number(read("memory.peak")),
+      events: Object.fromEntries(
+        read("memory.events")
+          .split("\n")
+          .map((line) => {
+            const [key, value] = line.split(" ");
+            return [key, Number(value)];
+          }),
+      ),
       stat: Object.fromEntries(
         read("memory.stat")
           .split("\n")
           .map((line) => {
             const [key, value] = line.split(" ");
             return [key, Number(value)];
-          })
-          .filter(([key]) =>
-            [
-              "anon",
-              "file",
-              "kernel",
-              "sock",
-              "shmem",
-              "file_mapped",
-              "inactive_file",
-              "active_file",
-            ].includes(key),
-          ),
+          }),
       ),
     };
+    if (policy) {
+      const reason = policy.sample({
+        now: performance.now(),
+        current: row.current,
+        peak: row.peak,
+        events: row.events,
+        ready,
+      });
+      row.policy = {
+        state: policy.state,
+        ready,
+        reason,
+        violations: [...policy.violations],
+      };
+    }
     if (detailed)
       row.processes = fs
         .readdirSync("/proc")
@@ -109,9 +130,21 @@ function observe(directory, cgroup) {
       JSON.stringify(row) + "\n",
       { mode: 0o600 },
     );
+    if (row.policy?.reason) onFailure(row.policy.reason);
   }
   const timer = setInterval(() => sample(++tick % 5 === 0), 100).unref();
   return {
+    lifecycle() {
+      if (process.env.REHEARSAL_TWO_PHASE !== "1") return;
+      policy = newPolicy();
+      ready = false;
+    },
+    ready(value = true) {
+      ready = value;
+    },
+    state() {
+      return policy?.state;
+    },
     phase(value) {
       phase = value;
       sample(true);
