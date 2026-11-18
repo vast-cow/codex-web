@@ -97,6 +97,7 @@ async function main() {
           );
           const config = {
             name: profile,
+            mixed: policy === "shared-stop",
             chunks: profile === "netem-bandwidth" ? 16 : 48,
             rate: 1e12,
             forward: 0,

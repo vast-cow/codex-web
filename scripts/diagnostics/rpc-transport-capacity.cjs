@@ -242,12 +242,12 @@ function patchTransportWriter(core) {
             }
           }
         }
-        return new WritableStream({write(n,s){const send=()=>{`,
+        return new WritableStream({write(n,s){const send=(n)=>{`,
     ],
     ["s.error(n),o()", "transportAbort.abort(n),s.error(n),o()"],
     [
       "}},async close()",
-      "}};return transport?.beforeStreamWrite ? gated(n,s.signal,send) : send()},async close()",
+      "}};if(!transport?.beforeStreamWrite)return send(n);const write=part=>gated(part,s.signal,()=>send(part));return transport.splitStreamWrite?transport.splitStreamWrite(n,write):write(n)},async close()",
     ],
     [
       "t=n??Error(`WritableStream was aborted`),",

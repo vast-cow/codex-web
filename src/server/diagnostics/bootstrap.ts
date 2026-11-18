@@ -128,44 +128,54 @@ export async function diagnosticFetch(
 }
 
 // Per-connection state avoids stream-ID collisions between tabs/reconnects.
-export function createBootstrapSender(socket: WebSocket) {
+export function createBootstrapSender(
+  socket: WebSocket,
+  transportSend?: (message: unknown) => boolean,
+) {
+  const send =
+    transportSend ??
+    ((message: unknown) => {
+      socket.send(JSON.stringify(message));
+      return true;
+    });
   const connectionId = randomUUID();
   let clockTimer: ReturnType<typeof setInterval> | undefined;
+  const probes = new Map<string, number>();
+  const onClockReply = (reply: any) => {
+    if (!bootstrapDiagnostics || reply?.type !== "bootstrap-clock-reply")
+      return;
+    const sentHostMs = probes.get(reply.probeId);
+    if (sentHostMs === undefined) return;
+    diagnostic("clock-sample", {
+      connectionId,
+      sentHostMs,
+      browserMs: reply.browserMs,
+      timeOrigin: reply.timeOrigin,
+    });
+    probes.delete(reply.probeId);
+  };
   if (bootstrapDiagnostics) {
-    const probes = new Map<string, number>();
     const probe = () => {
       probes.clear();
       const probeId = randomUUID(),
         hostMs = performance.now();
       probes.set(probeId, hostMs);
-      socket.send(JSON.stringify({ type: "bootstrap-clock", probeId }));
+      send({ type: "bootstrap-clock", probeId });
     };
-    socket.on("message", (raw) => {
-      const size = Array.isArray(raw)
-        ? raw.reduce((n, buffer) => n + buffer.length, 0)
-        : raw instanceof ArrayBuffer
-          ? raw.byteLength
-          : raw.length;
-      if (size > 512) return;
-      try {
-        const reply = JSON.parse(String(raw));
-        const sentHostMs = probes.get(reply.probeId);
-        if (
-          reply.type === "bootstrap-clock-reply" &&
-          sentHostMs !== undefined
-        ) {
-          diagnostic("clock-sample", {
-            connectionId,
-            sentHostMs,
-            browserMs: reply.browserMs,
-            timeOrigin: reply.timeOrigin,
-          });
-          probes.delete(reply.probeId);
+    if (!transportSend)
+      socket.on("message", (raw) => {
+        const size = Array.isArray(raw)
+          ? raw.reduce((n, buffer) => n + buffer.length, 0)
+          : raw instanceof ArrayBuffer
+            ? raw.byteLength
+            : raw.length;
+        if (size > 512) return;
+        try {
+          onClockReply(JSON.parse(String(raw)));
+        } catch {
+          /* Other IPC is handled by the bridge. */
         }
-      } catch {
-        /* Other IPC is handled by the bridge. */
-      }
-    });
+      });
     probe();
     clockTimer = setInterval(probe, 5000).unref();
   }
@@ -180,10 +190,9 @@ export function createBootstrapSender(socket: WebSocket) {
     string,
     { requestId: string; sequence: number; totalBytes: number }
   >();
-  return (message: any) => {
+  const sendMessage = (message: any): boolean => {
     if (!bootstrapDiagnostics) {
-      socket.send(JSON.stringify(message));
-      return;
+      return send(message);
     }
     const data = message?.data;
     const response =
@@ -207,8 +216,7 @@ export function createBootstrapSender(socket: WebSocket) {
       (h: string[]) => h[0]?.toLowerCase() === traceHeader,
     )?.[1];
     if (!stream && !headerId) {
-      socket.send(JSON.stringify(message));
-      return;
+      return send(message);
     }
     const bytes =
       stream && data[1][2]?.[0] === "write"
@@ -232,6 +240,13 @@ export function createBootstrapSender(socket: WebSocket) {
       totalBytes: stream?.totalBytes ?? 0,
     };
     diagnostic("serialize-start", trace);
+    if (transportSend) {
+      const accepted = transportSend({ ...message, bootstrapTrace: trace });
+      diagnostic("transport-staged", { ...trace, accepted });
+      if (stream && ["close", "error", "abort"].includes(trace.operation))
+        streams.delete(`${message.portId}:${data[1][1]}`);
+      return accepted;
+    }
     const serialized = JSON.stringify({ ...message, bootstrapTrace: trace });
     diagnostic("send-queue-insert", {
       ...trace,
@@ -265,5 +280,7 @@ export function createBootstrapSender(socket: WebSocket) {
     });
     if (stream && ["close", "error", "abort"].includes(trace.operation))
       streams.delete(`${message.portId}:${data[1][1]}`);
+    return true;
   };
+  return Object.assign(sendMessage, { onClockReply });
 }

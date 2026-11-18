@@ -11,8 +11,19 @@ const {
   patchTransportWriter,
 } = require("./rpc-transport-capacity.cjs");
 const { flushReady } = require("./rpc-resource.cjs");
+const sharedModule = require("./rpc-shared-module.cjs");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const profiles = [
+  {
+    name: "shared-peer-timeout",
+    chunks: 16,
+    rate: 4194304,
+    forward: 20,
+    ack: 20,
+    receiptTimeoutMs: 700,
+    dropPeer: true,
+    mixed: true,
+  },
   {
     name: "source-error",
     chunks: 24,
@@ -223,12 +234,21 @@ function kernelTx(connections) {
     }
   return total;
 }
-async function worker(fixture, mode, config, enabled, bounded = false) {
+async function worker(
+  fixture,
+  mode,
+  config,
+  enabled,
+  bounded = false,
+  shared = false,
+) {
   if (bounded && !enabled)
     throw Error("Bounded transport requires fixture admission limits");
   const { chromium } = require(process.env.PLAYWRIGHT_MODULE),
     { WebSocketServer } = require("ws");
   const cores = JSON.parse(fs.readFileSync(fixture));
+  const sharedCode = shared && (cores.sharedTransport ?? sharedModule.source());
+  const sharedApi = shared && sharedModule.load(sharedCode);
   const waveBarriers = new Map();
   const actions = [];
   let kernelMarked = false;
@@ -269,6 +289,7 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
     c.closed = true;
     c.closedAt = performance.now();
     c.capacity?.close(Error("isolated connection closed"));
+    c.shared?.close();
     c.wireBytes = c.socket.bytesWritten - c.initialWireBytes;
     for (const j of c.jobs.values()) {
       clearTimeout(j.timer);
@@ -368,6 +389,7 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
   const server = new WebSocketServer({
     host: "127.0.0.1",
     port: 0,
+    ...(shared && { maxPayload: sharedApi.sharedTransportWireLimit }),
     perMessageDeflate: config.compress
       ? {
           serverNoContextTakeover: true,
@@ -393,7 +415,7 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
       closed: false,
     };
     connections.set(cid, c);
-    if (bounded)
+    if (bounded && !shared)
       c.capacity = new TransportCapacity({
         change: (bytes) => budget.set("transport", cid, "reserved", bytes),
         fail(error) {
@@ -415,9 +437,8 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
         );
         extraSocket.on("error", () => {});
       }, 50);
-    ws.on("message", (raw) => {
+    function receiveRpc(m) {
       if (c.closed) return;
-      const m = JSON.parse(String(raw));
       if (c.capacity && Object.hasOwn(m, "transportReceipt")) {
         c.capacity.receipt(m.transportReceipt);
         return;
@@ -427,6 +448,106 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
         c.resolve = c.reject = undefined;
         r(m);
       } else c.rx.push(m);
+    }
+    if (shared) {
+      c.sharedPeak = {};
+      c.shared = new sharedApi.SharedWebSocketTransport(
+        "server",
+        {
+          bufferedAmount: () => ws.bufferedAmount + c.shape,
+          send(frame) {
+            if (!config.forward) {
+              ws.send(frame, (error) => {
+                if (error) c.shared.fail(error);
+              });
+              maxWs = Math.max(maxWs, ws.bufferedAmount);
+              return;
+            }
+            const now = performance.now();
+            const bytes = frame.byteLength;
+            c.available =
+              Math.max(now, c.available) + (bytes / config.rate) * 1000;
+            const id = ++c.sequence;
+            const job = { frame, bytes };
+            c.jobs.set(id, job);
+            c.shape += bytes;
+            const forward =
+              config.early !== undefined && c.writes <= 4
+                ? config.early
+                : config.forward;
+            job.timer = setTimeout(
+              () => {
+                job.ready = true;
+                flushReady(c.jobs, (key, next) => {
+                  c.jobs.delete(key);
+                  c.shape -= next.bytes;
+                  ws.send(next.frame, (error) => {
+                    if (error) c.shared.fail(error);
+                  });
+                  maxWs = Math.max(maxWs, ws.bufferedAmount);
+                });
+              },
+              Math.max(0, c.available - now + forward),
+            );
+          },
+          deliver(message) {
+            if (message.type === "message-port-message")
+              receiveRpc(message.data);
+            else if (message.type === "ipc-renderer-invoke") {
+              assert.equal(message.args[0].length, 700000);
+              assert.equal(message.args[0], "⇄".repeat(700000));
+              for (const type of [
+                "ipc-main-event",
+                "ipc-renderer-invoke-result",
+                "workspace-directory-entries-result",
+                "bootstrap-clock",
+              ]) {
+                if (
+                  !c.shared.send({
+                    type,
+                    requestId: message.requestId,
+                    content: "⇄".repeat(
+                      type === "ipc-main-event" ? 700000 : 30,
+                    ),
+                  })
+                )
+                  throw Error("Mixed IPC send failed");
+              }
+            } else {
+              assert.ok(
+                [
+                  "ipc-renderer-send",
+                  "ipc-renderer-post-message",
+                  "workspace-directory-entries-request",
+                  "bootstrap-clock-reply",
+                  "message-port-close",
+                ].includes(message.type),
+              );
+              c.mixedReverse = (c.mixedReverse || 0) + 1;
+            }
+          },
+          fail(error) {
+            c.transportError = error.message;
+            ws.terminate();
+          },
+          change(sample) {
+            if (!c.closed)
+              budget.set("transport", cid, "reserved", sample.data);
+            for (const [key, value] of Object.entries(sample))
+              c.sharedPeak[key] = Math.max(c.sharedPeak[key] || 0, value);
+          },
+        },
+        config.dropPeer && cid !== "0" ? undefined : config.receiptTimeoutMs,
+      );
+      c.shared.start();
+    }
+    ws.on("message", (raw, binary) => {
+      if (shared) {
+        if (binary) c.shared.receive(raw);
+        else c.shared.fail(Error("Expected binary frame"));
+      } else {
+        receiveRpc(JSON.parse(String(raw)));
+      }
     });
     class Service extends host.Target {
       fetch(id) {
@@ -495,11 +616,28 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
     const session = new host.Session(
       {
         encodingLevel: "jsonCompatible",
-        beforeStreamWrite: c.capacity?.write.bind(c.capacity),
+        beforeStreamWrite: shared
+          ? c.shared.beforeStreamWrite.bind(c.shared)
+          : c.capacity?.write.bind(c.capacity),
+        splitStreamWrite: shared
+          ? c.shared.splitStreamWrite.bind(c.shared)
+          : undefined,
         send(m) {
           sendingConnection = cid;
           if (c.closed || (budget.tripped && enabled))
             throw Error("isolated stopped transport");
+          if (shared) {
+            if (m[0] === "stream" && m[1]?.[2]?.[0] === "write") c.writes++;
+            if (
+              !c.shared.send({
+                type: "message-port-message",
+                portId: "fixture",
+                data: m,
+              })
+            )
+              throw Error("isolated transport rejected RPC message");
+            return;
+          }
           const text = JSON.stringify(
               bounded
                 ? { type: "message-port-message", portId: "fixture", data: m }
@@ -732,7 +870,15 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
     // Each page is one independent RPC connection; its streams share that socket.
     const run = async (page, client) =>
       page.evaluate(
-        async ({ url, config, client, enabled, bounded, peerLimits }) => {
+        async ({
+          url,
+          config,
+          client,
+          enabled,
+          bounded,
+          peerLimits,
+          sharedCode,
+        }) => {
           const { api, d, counters } = globalThis.fixture;
           const ws = new WebSocket(url + "?client=" + client),
             channel = new MessageChannel(),
@@ -753,6 +899,9 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
             received = 0,
             portHold,
             portHeld = false;
+          const mixed = [];
+          const sharedPeak = {};
+          let mixedDone;
           const pause = (ms) => new Promise((r) => setTimeout(r, ms));
           const close = () => {
             if (closed) return;
@@ -768,6 +917,7 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
             queue.length = 0;
             pending?.reject(Error("closed"));
             pending = undefined;
+            sharedTransport?.close();
           };
           const send = (text, size) => {
             if (ws.readyState !== 1) return;
@@ -788,7 +938,7 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
             wsPeak = Math.max(wsPeak, ws.bufferedAmount);
           };
           const accept = (delivery) => {
-            if (bounded) {
+            if (bounded && !sharedCode) {
               const text = JSON.stringify({
                 transportReceipt: delivery.sequence,
               });
@@ -815,7 +965,9 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
               size = new TextEncoder().encode(text).byteLength,
               job = { text, size };
             const proposed =
-              ackBytes + size + (bounded ? ws.bufferedAmount + 14 : 0);
+              ackBytes +
+              size +
+              (bounded && !sharedCode ? ws.bufferedAmount + 14 : 0);
             if (proposed > (config.peerFault ? 1 : peerLimits.reverse)) {
               globalThis.peerBreach(
                 "reverse",
@@ -837,15 +989,32 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
                 if (!next.ready) break;
                 timers.delete(next);
                 ackBytes -= next.size;
-                send(next.text, next.size);
+                if (sharedTransport)
+                  sharedTransport.send({
+                    type: "message-port-message",
+                    portId: "fixture",
+                    data: JSON.parse(next.text),
+                  });
+                else send(next.text, next.size);
               }
             }, config.ack);
           };
-          ws.onmessage = (e) => {
-            if (closed) return;
-            const m = JSON.parse(e.data),
-              size = new TextEncoder().encode(e.data).byteLength;
-            if (bounded) {
+          function deliverRpc(m, size) {
+            if (sharedCode) {
+              if (pending) {
+                const p = pending;
+                pending = undefined;
+                p.resolve(m);
+              } else {
+                queuedBytes += size;
+                receivePeak = Math.max(receivePeak, queuedBytes);
+                if (queuedBytes > 512 * 1024)
+                  throw Error("Browser RPC receive staging exhausted");
+                queue.push({ m, size });
+              }
+              return;
+            }
+            if (bounded && !sharedCode) {
               stageBytes += size;
               stagePeak = Math.max(stagePeak, stageBytes);
               receivePeak = Math.max(
@@ -878,6 +1047,52 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
             portBytes += size;
             portPeak = Math.max(portPeak, portBytes);
             channel.port1.postMessage({ m, size });
+          }
+          let sharedTransport;
+          if (sharedCode) {
+            const module = {};
+            new Function("exports", sharedCode)(module);
+            ws.binaryType = "arraybuffer";
+            sharedTransport = new module.SharedWebSocketTransport("browser", {
+              bufferedAmount: () => ws.bufferedAmount,
+              send: (frame) => {
+                ws.send(frame);
+                wsPeak = Math.max(wsPeak, ws.bufferedAmount);
+              },
+              deliver(message, size) {
+                if (message.type === "message-port-message") {
+                  deliverRpc(message.data, size);
+                  return;
+                }
+                if (
+                  message.content !==
+                  "⇄".repeat(message.type === "ipc-main-event" ? 700000 : 30)
+                )
+                  throw Error("CORRUPT mixed IPC");
+                mixed.push(message.type);
+                if (message.type === "bootstrap-clock") {
+                  sharedTransport.send({ type: "bootstrap-clock-reply" });
+                  mixedDone?.();
+                }
+              },
+              fail() {
+                ws.close(4001, "transport failed");
+              },
+              change(sample) {
+                for (const [key, value] of Object.entries(sample))
+                  sharedPeak[key] = Math.max(sharedPeak[key] || 0, value);
+              },
+            });
+          }
+          ws.onmessage = (e) => {
+            if (closed) return;
+            if (sharedTransport) {
+              if (!(config.dropPeer && client === 0))
+                sharedTransport.receive(new Uint8Array(e.data));
+              return;
+            }
+            const m = JSON.parse(e.data);
+            deliverRpc(m, new TextEncoder().encode(e.data).byteLength);
           };
           channel.port2.onmessage = (e) => {
             if (closed) return;
@@ -895,6 +1110,7 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
           ws.onclose = close;
           ws.onerror = close;
           await new Promise((r) => (ws.onopen = r));
+          sharedTransport?.start();
           const session = new api.Session({
             encodingLevel: "jsonCompatible",
             send(m) {
@@ -920,6 +1136,33 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
           const outcomes = [],
             snapshots = [],
             waves = [];
+          let mixedTransfer;
+          if (
+            sharedTransport &&
+            config.mixed &&
+            !(config.dropPeer && client === 0)
+          ) {
+            mixedTransfer = new Promise((resolve) => {
+              mixedDone = resolve;
+            });
+            for (const type of [
+              "ipc-renderer-send",
+              "ipc-renderer-post-message",
+              "workspace-directory-entries-request",
+              "message-port-close",
+            ])
+              sharedTransport.send({ type });
+            const launchMixed = () => {
+              if (!closed)
+                sharedTransport.send({
+                  type: "ipc-renderer-invoke",
+                  requestId: "mixed",
+                  args: ["⇄".repeat(700000)],
+                });
+            };
+            // Open both RPC streams first to exercise contention.
+            setTimeout(launchMixed, 130);
+          }
           for (let wave = 0; wave < (config.waves || 1) && !closed; wave++) {
             const values = await Promise.all(
               Array.from({ length: config.streams || 2 }, async (_, stream) => {
@@ -1003,6 +1246,17 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
             waves.push(await globalThis.checkpoint("wave:" + wave));
           }
           await pause(config.drainMs ?? 3 * config.ack + 100);
+          if (
+            mixedTransfer &&
+            !closed &&
+            !(config.disconnectAt && client === 0)
+          )
+            await Promise.race([
+              mixedTransfer,
+              pause(15000).then(() => {
+                if (!mixed.length) throw Error("Mixed IPC timed out");
+              }),
+            ]);
           const final = {
             writerBytes: counters.active,
             portBytes,
@@ -1024,6 +1278,8 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
             portPeak,
             stagePeak,
             receivePeak,
+            sharedPeak,
+            mixed,
             extensions: ws.extensions,
           };
         },
@@ -1034,6 +1290,7 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
           enabled,
           bounded,
           peerLimits: limits.peer,
+          sharedCode,
         },
       );
     const values = await Promise.all(pages.map(run));
@@ -1075,7 +1332,7 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
         );
       }
     }
-    if (bounded) {
+    if (bounded && !shared) {
       assert.ok(
         [...connections.values()].every(
           (c) => !c.capacity.pending.size && !c.capacity.waiters.size,
@@ -1091,7 +1348,7 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
           [...connections.values()].every((c) => c.capacity.stats.waits > 0),
         );
     }
-    if (bounded && config.receiptTimeoutMs)
+    if (bounded && !shared && config.receiptTimeoutMs)
       assert.ok(
         [...connections.values()].every(
           (c) => c.transportError === "Transport receipt deadline exceeded",
@@ -1106,7 +1363,8 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
       for (const p of pageResults)
         for (const o of p.outcomes) {
           if (
-            (bounded && config.receiptTimeoutMs) ||
+            (bounded && !shared && config.receiptTimeoutMs) ||
+            (config.dropPeer && p.client === 0) ||
             (config.disconnectAt && p.client === 0)
           )
             assert.ok(o.error, "disconnected client must reject");
@@ -1143,12 +1401,58 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
     await sleep(100);
     await sample();
     const elapsed = lastConsumed - firstProduced;
+    if (shared) {
+      for (const page of pageResults) {
+        const connection = connections.get(String(page.client));
+        assert.ok(
+          connection?.sharedPeak || budget.tripped,
+          JSON.stringify({
+            client: page.client,
+            stopReason,
+            status: page.outcomes,
+            failures: [...connections.values()].map((c) => [
+              c.id,
+              c.transportError,
+            ]),
+          }),
+        );
+        assert.ok((connection?.sharedPeak?.data || 0) <= 448 * 1024);
+        assert.ok((page.sharedPeak.data || 0) <= 64 * 1024);
+        assert.ok((connection?.sharedPeak?.priority || 0) <= 8 * 1024);
+        assert.ok((page.sharedPeak.priority || 0) <= 8 * 1024);
+        if (
+          config.mixed &&
+          !budget.tripped &&
+          !(page.client === 0 && (config.disconnectAt || config.dropPeer))
+        ) {
+          assert.deepEqual(
+            page.mixed,
+            [
+              "ipc-main-event",
+              "ipc-renderer-invoke-result",
+              "workspace-directory-entries-result",
+              "bootstrap-clock",
+            ],
+            JSON.stringify({
+              client: page.client,
+              outcome: page.outcomes,
+              transportError: connection.transportError,
+              admitted: connection.sharedPeak,
+              browser: page.sharedPeak,
+            }),
+          );
+          assert.equal(connection.mixedReverse, 5);
+        }
+      }
+      assert.ok((budget.peaks.transport?.total || 0) <= 896 * 1024);
+    }
     return {
       mode,
       config,
       cleanupMs,
       enabled,
       bounded,
+      shared,
       status: budget.tripped
         ? "budget-stop"
         : [...connections.values()].some((c) => c.transportError)
@@ -1182,6 +1486,8 @@ async function worker(fixture, mode, config, enabled, bounded = false) {
         wireBytes: c.wireBytes,
         transportError: c.transportError,
         capacity: c.capacity?.stats,
+        sharedPeak: c.sharedPeak,
+        mixedReverse: c.mixedReverse,
       })),
       elapsedMs: elapsed,
       throughputMiBs:
@@ -1218,6 +1524,7 @@ function prepare(output) {
   const root = path.resolve(__dirname, "../../scratch/asar"),
     source = fs.readFileSync(path.join(root, target), "utf8");
   const fixture = {
+    sharedTransport: sharedModule.source(),
     sourceHostHash: createHash("sha256").update(source).digest("hex"),
     browser: extract(
       instrument(
@@ -1250,8 +1557,9 @@ async function main() {
           process.argv[3],
           process.argv[4],
           JSON.parse(process.argv[5]),
-          ["stop", "bounded-stop"].includes(process.argv[6]),
-          process.argv[6] === "bounded-stop",
+          ["stop", "bounded-stop", "shared-stop"].includes(process.argv[6]),
+          ["bounded-stop", "shared-stop"].includes(process.argv[6]),
+          process.argv[6] === "shared-stop",
         ),
       ),
     );
@@ -1298,7 +1606,9 @@ async function main() {
               "worker",
               fixture,
               mode,
-              JSON.stringify(config),
+              JSON.stringify(
+                policy === "shared-stop" ? { ...config, mixed: true } : config,
+              ),
               policy,
             ],
             {

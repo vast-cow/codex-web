@@ -10,6 +10,10 @@ import {
   openSelectWorkspaceRootDialog,
   type WorkspaceDirectoryEntries,
 } from "./workspace-root-dialog";
+import {
+  sharedTransportProtocol,
+  SharedWebSocketTransport,
+} from "../shared/websocket-transport";
 
 type IpcListener = (event: unknown, ...args: unknown[]) => void;
 
@@ -123,13 +127,16 @@ type ElectronShimState = {
 declare global {
   interface Window {
     __ELECTRON_SHIM__?: ElectronShimState;
+    __codexWebConnectAppHost?: typeof connectAppHost;
   }
 }
 
 declare const __CODEX_APP_VERSION__: string;
+declare const __CODEX_WEB_SHARED_TRANSPORT__: boolean;
 
 let requestCounter = 0;
 let socket: WebSocket | null = null;
+let transport: SharedWebSocketTransport | undefined;
 let needsReload = false;
 let reconnectTimeoutId: number | null = null;
 const outboundQueue: RendererToMainMessage[] = [];
@@ -149,6 +156,13 @@ const pendingDirectoryEntries = new Map<
 >();
 const rendererListeners = new Map<string, Set<IpcListener>>();
 const messagePorts = new Map<string, MessagePort>();
+const appHostPorts = new Map<
+  string,
+  {
+    receive: (data: unknown, bytes: number) => void;
+    close: (error: Error) => void;
+  }
+>();
 let latestBootstrapTrace: object | undefined;
 
 function unimplemented(method: string): never {
@@ -167,7 +181,10 @@ export function emitRendererEvent(channel: string, args: unknown[]): void {
   }
 }
 
-function handleIncomingMessage(message: MainToRendererMessage): void {
+function handleIncomingMessage(
+  message: MainToRendererMessage,
+  bytes: number,
+): void {
   if (message.type === "ipc-main-event") {
     emitRendererEvent(message.channel, message.args);
     return;
@@ -188,11 +205,16 @@ function handleIncomingMessage(message: MainToRendererMessage): void {
   }
 
   if (message.type === "message-port-message") {
-    messagePorts.get(message.portId)?.postMessage(message.data);
+    const appHost = appHostPorts.get(message.portId);
+    if (appHost) appHost.receive(message.data, bytes);
+    else messagePorts.get(message.portId)?.postMessage(message.data);
     return;
   }
 
   if (message.type === "message-port-close") {
+    appHostPorts
+      .get(message.portId)
+      ?.close(Error("Desktop closed the RPC port"));
     const port = messagePorts.get(message.portId);
     messagePorts.delete(message.portId);
     port?.close();
@@ -241,66 +263,101 @@ function ensureSocket(): void {
     return;
   }
 
-  socket = new WebSocket(
+  const connection = new WebSocket(
     `${window.location.protocol === "https:" ? "wss:" : "ws:"}//${window.location.host}/__backend/ipc`,
+    __CODEX_WEB_SHARED_TRANSPORT__ ? [sharedTransportProtocol] : [],
   );
-  socket.addEventListener("open", () => {
+  socket = connection;
+  const bounded = __CODEX_WEB_SHARED_TRANSPORT__
+    ? new SharedWebSocketTransport("browser", {
+        bufferedAmount: () => connection.bufferedAmount,
+        send: (frame) => {
+          if (connection.readyState !== WebSocket.OPEN)
+            throw Error("IPC socket is closed");
+          connection.send(frame as Uint8Array<ArrayBuffer>);
+        },
+        deliver: dispatchIncoming,
+        fail: (error) => {
+          console.error("[ipc-bridge]", error.message);
+          connection.close(4001, "IPC transport failed");
+        },
+        change: (sample) =>
+          window.dispatchEvent(
+            new CustomEvent("codex-ipc-transport", { detail: sample }),
+          ),
+      })
+    : undefined;
+  transport = bounded;
+  if (bounded) connection.binaryType = "arraybuffer";
+  connection.addEventListener("open", () => {
     // App-host RPC transfers MessagePorts once at startup. A new connection needs
     // a fresh app view; replaying requests against the closed ports cannot recover it.
     if (needsReload) {
       window.location.reload();
       return;
     }
-    flushOutboundQueue();
+    if (bounded) bounded.start();
+    else flushOutboundQueue();
   });
-  socket.addEventListener("message", (event) => {
-    const receivedBrowserMs = performance.now();
+  connection.addEventListener("message", (event) => {
+    if (bounded) {
+      if (event.data instanceof ArrayBuffer)
+        bounded.receive(new Uint8Array(event.data));
+      else bounded.fail(Error("Expected a binary IPC transport frame"));
+      return;
+    }
     try {
-      const parsed = JSON.parse(String(event.data));
-      if (parsed.type === "bootstrap-clock") {
-        socket?.send(
-          JSON.stringify({
-            type: "bootstrap-clock-reply",
-            probeId: parsed.probeId,
-            browserMs: performance.now(),
-            timeOrigin: performance.timeOrigin,
-          }),
-        );
-        return;
-      }
-      const message = parsed as MainToRendererMessage;
-      const trace = (
-        message as MainToRendererMessage & { bootstrapTrace?: object }
-      ).bootstrapTrace;
-      if (trace) latestBootstrapTrace = trace;
-      if (trace)
-        console.info(
-          "[bootstrap-delivery]",
-          JSON.stringify({
-            event: "browser-receipt",
-            browserMs: receivedBrowserMs,
-            timeOrigin: performance.timeOrigin,
-            ...trace,
-          }),
-        );
-      handleIncomingMessage(message);
-      if (trace)
-        console.info(
-          "[bootstrap-delivery]",
-          JSON.stringify({
-            event: "browser-dispatched",
-            browserMs: performance.now(),
-            ...trace,
-          }),
-        );
+      dispatchIncoming(JSON.parse(String(event.data)));
     } catch (error) {
       console.error(
-        "[electron-stub] failed to parse IPC bridge message",
+        "[electron-stub] failed to dispatch IPC bridge message",
         error,
       );
     }
   });
-  socket.addEventListener("close", () => {
+  function dispatchIncoming(parsed: unknown, bytes = 0): void {
+    const receivedBrowserMs = performance.now();
+    const message = parsed as
+      MainToRendererMessage | { type: "bootstrap-clock"; probeId: string };
+    if (message.type === "bootstrap-clock") {
+      const reply = {
+        type: "bootstrap-clock-reply",
+        probeId: message.probeId,
+        browserMs: performance.now(),
+        timeOrigin: performance.timeOrigin,
+      };
+      if (bounded) bounded.send(reply);
+      else connection.send(JSON.stringify(reply));
+      return;
+    }
+    const trace = (
+      message as MainToRendererMessage & { bootstrapTrace?: object }
+    ).bootstrapTrace;
+    if (trace) latestBootstrapTrace = trace;
+    if (trace)
+      console.info(
+        "[bootstrap-delivery]",
+        JSON.stringify({
+          event: "browser-receipt",
+          browserMs: receivedBrowserMs,
+          timeOrigin: performance.timeOrigin,
+          ...trace,
+        }),
+      );
+    handleIncomingMessage(message, bytes);
+    if (trace)
+      console.info(
+        "[bootstrap-delivery]",
+        JSON.stringify({
+          event: "browser-dispatched",
+          browserMs: performance.now(),
+          ...trace,
+        }),
+      );
+  }
+  connection.addEventListener("close", () => {
+    bounded?.close();
+    if (socket !== connection) return;
     needsReload = true;
     const error = new Error("Connection to Codex was lost");
     for (const pending of pendingInvokes.values()) pending.reject(error);
@@ -313,9 +370,10 @@ function ensureSocket(): void {
       port.close();
     }
     messagePorts.clear();
+    for (const port of appHostPorts.values()) port.close(error);
     scheduleReconnect();
   });
-  socket.addEventListener("error", () => {
+  connection.addEventListener("error", () => {
     scheduleReconnect();
   });
 }
@@ -350,6 +408,13 @@ function enqueueMessage(message: RendererToMainMessage): void {
         );
     }
   }
+  if (__CODEX_WEB_SHARED_TRANSPORT__) {
+    if (needsReload) throw Error("Connection to Codex was lost");
+    ensureSocket();
+    if (!transport?.send(message))
+      throw Error("IPC transport rejected the message");
+    return;
+  }
   outboundQueue.push(message);
   ensureSocket();
   flushOutboundQueue();
@@ -358,6 +423,84 @@ function enqueueMessage(message: RendererToMainMessage): void {
 function nextRequestId(): string {
   requestCounter += 1;
   return `ipc_bridge_${requestCounter}`;
+}
+
+// The packaged browser RPC adapter can connect here in the isolated build.
+// This avoids an unmetered MessagePort queue between it and the WebSocket.
+function connectAppHost() {
+  const portId = `message_port_${nextRequestId()}`;
+  const queue: { data: unknown; bytes: number }[] = [];
+  let retained = 0;
+  let failure: Error | undefined;
+  let waiting:
+    | { resolve: (data: unknown) => void; reject: (error: Error) => void }
+    | undefined;
+  const close = (error: Error) => {
+    if (failure) return;
+    failure = error;
+    appHostPorts.delete(portId);
+    queue.length = 0;
+    retained = 0;
+    waiting?.reject(error);
+    waiting = undefined;
+  };
+  appHostPorts.set(portId, {
+    close,
+    receive(data, bytes) {
+      if (data === null) {
+        close(Error("Desktop ended the RPC session"));
+      } else if (waiting) {
+        waiting.resolve(data);
+        waiting = undefined;
+      } else {
+        if (queue.length >= 64 || retained + bytes > 512 * 1024)
+          throw Error("Browser RPC receive staging exhausted");
+        retained += bytes;
+        queue.push({ bytes, data });
+      }
+    },
+  });
+  try {
+    enqueueMessage({
+      type: "ipc-renderer-post-message",
+      channel: "codex_desktop:connect-app-host",
+      message: undefined,
+      portIds: [portId],
+    });
+  } catch (error) {
+    close(error instanceof Error ? error : Error(String(error)));
+    throw error;
+  }
+  return {
+    encodingLevel: "jsonCompatible",
+    send(data: unknown) {
+      if (failure) throw failure;
+      enqueueMessage({ type: "message-port-message", portId, data });
+    },
+    receive(): Promise<unknown> {
+      const message = queue.shift();
+      if (message) {
+        retained -= message.bytes;
+        return Promise.resolve(message.data);
+      }
+      if (failure) return Promise.reject(failure);
+      if (waiting)
+        return Promise.reject(Error("Concurrent RPC transport receive"));
+      return new Promise((resolve, reject) => {
+        waiting = { resolve, reject };
+      });
+    },
+    abort(error: Error): void {
+      if (failure) return;
+      close(error);
+      try {
+        enqueueMessage({ type: "message-port-message", portId, data: null });
+        enqueueMessage({ type: "message-port-close", portId });
+      } catch {
+        // Closing the WebSocket rejects the peer's outstanding operations.
+      }
+    },
+  };
 }
 
 function invokeMain(channel: string, args: unknown[]): Promise<unknown> {
@@ -670,6 +813,8 @@ export const ipcRenderer = {
 };
 
 ensureSocket();
+if (__CODEX_WEB_SHARED_TRANSPORT__)
+  window.__codexWebConnectAppHost = connectAppHost;
 
 export const contextBridge = {
   exposeInMainWorld(_key: string, _api: unknown): void {

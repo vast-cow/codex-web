@@ -23,6 +23,7 @@ export default defineConfig({
   root: webviewRoot,
   define: {
     __CODEX_APP_VERSION__: JSON.stringify(asarPackageJson.version),
+    __CODEX_WEB_SHARED_TRANSPORT__: process.env.CODEX_WEB_SHARED_TRANSPORT === "1",
     "process.env.NODE_ENV": JSON.stringify(browserNodeEnv),
   },
   server: {

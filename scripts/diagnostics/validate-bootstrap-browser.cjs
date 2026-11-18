@@ -18,6 +18,7 @@ const assert = require("assert/strict");
     define: {
       "process.env.NODE_ENV": '"production"',
       __CODEX_APP_VERSION__: '"diagnostic-test"',
+      __CODEX_WEB_SHARED_TRANSPORT__: "false",
     },
     build: {
       outDir: root,

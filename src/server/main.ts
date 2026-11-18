@@ -24,6 +24,13 @@ import {
 import { staticAssetDelivery } from "./static-assets";
 import { installModuleAliasHook } from "./module";
 import { validateNativeDependencies } from "./native-dependencies";
+import {
+  SharedWebSocketTransport,
+  sharedTransportClients,
+  sharedTransportWireLimit,
+  sharedTransportProtocol,
+  type TransportSample,
+} from "../shared/websocket-transport";
 
 installBootstrapFetchDiagnostics();
 
@@ -133,19 +140,27 @@ type BridgedMessagePort = {
 class WebSocketMessagePort implements BridgedMessagePort {
   private closed = false;
   private readonly pendingMessages: unknown[] = [];
+  private pendingBytes = 0;
   private readonly listeners = new Map<string, Set<MessagePortListener>>();
+  readonly beforeStreamWrite?: SharedWebSocketTransport["beforeStreamWrite"];
+  readonly splitStreamWrite?: SharedWebSocketTransport["splitStreamWrite"];
 
   constructor(
     private readonly portId: string,
     private readonly sendToRenderer: (message: MainToRendererMessage) => void,
     private readonly onClosed: () => void,
-  ) {}
+    private readonly transport?: SharedWebSocketTransport,
+  ) {
+    this.beforeStreamWrite = transport?.beforeStreamWrite.bind(transport);
+    this.splitStreamWrite = transport?.splitStreamWrite.bind(transport);
+  }
 
   on(event: string, listener: MessagePortListener): this {
     const listeners = this.listeners.get(event) ?? new Set();
     listeners.add(listener);
     this.listeners.set(event, listeners);
     if (event === "message") {
+      this.pendingBytes = 0;
       for (const data of this.pendingMessages.splice(0)) {
         this.receiveMessage(data);
       }
@@ -177,12 +192,23 @@ class WebSocketMessagePort implements BridgedMessagePort {
     });
   }
 
-  receiveMessage(data: unknown): void {
+  receiveMessage(data: unknown, bytes = 0): void {
     if (this.closed) {
       return;
     }
     const listeners = this.listeners.get("message");
     if (!listeners || listeners.size === 0) {
+      if (
+        this.transport &&
+        (this.pendingMessages.length >= 32 ||
+          this.pendingBytes + bytes > 256 * 1024)
+      ) {
+        this.transport.fail(
+          Error("IPC port has no receiver for queued payloads"),
+        );
+        return;
+      }
+      this.pendingBytes += bytes;
       this.pendingMessages.push(data);
       return;
     }
@@ -210,6 +236,7 @@ class WebSocketMessagePort implements BridgedMessagePort {
     }
     this.closed = true;
     this.pendingMessages.length = 0;
+    this.pendingBytes = 0;
     this.onClosed();
     return true;
   }
@@ -421,8 +448,12 @@ function ensureElectronLikeProcessContext(): void {
 async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
   const bridgeState = getIpcMainBridgeState();
   const app = Fastify({ logger: false });
+  const bounded = process.env.CODEX_WEB_SHARED_TRANSPORT === "1";
+  if (bounded && options.host !== "127.0.0.1")
+    throw Error("Experimental IPC bridge must use a loopback listener");
   const websocketServer = new WebSocketServer({
     noServer: true,
+    ...(bounded && { maxPayload: sharedTransportWireLimit, autoPong: false }),
     perMessageDeflate: {
       // Compress bulk IPC messages without retaining dictionaries between messages.
       serverNoContextTakeover: true,
@@ -503,27 +534,90 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
       return;
     }
 
+    const experimentalClient =
+      request.headers["sec-websocket-protocol"] === sharedTransportProtocol;
+    if (
+      experimentalClient !== bounded ||
+      (bounded && websocketServer.clients.size >= sharedTransportClients)
+    ) {
+      socket.end(
+        bounded && experimentalClient
+          ? "HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\nContent-Length: 0\r\n\r\n"
+          : "HTTP/1.1 400 Bad Request\r\nConnection: close\r\nContent-Length: 0\r\n\r\n",
+      );
+      return;
+    }
     websocketServer.handleUpgrade(request, socket, head, (upgradedSocket) => {
       websocketServer.emit("connection", upgradedSocket, request);
     });
   });
 
-  const rendererSockets = new Map<number, WebSocket>();
+  const rendererSenders = new Map<
+    number,
+    (message: MainToRendererMessage) => boolean
+  >();
+  const outgoing = new Map<WebSocket, number>();
+  let aggregatePeak = 0;
+  const metrics = process.env.CODEX_WEB_TRANSPORT_METRICS === "1";
   const rendererWindowFactory = new Promise<() => Promise<RendererWindow>>(
     (resolve) => {
       bridgeState.setRendererWindowFactory = resolve;
     },
   );
   bridgeState.sendToRenderer = (webContentsId, message): void => {
-    const socket = rendererSockets.get(webContentsId);
-    if (socket?.readyState === WebSocket.OPEN) {
-      socket.send(JSON.stringify(message));
-    }
+    rendererSenders.get(webContentsId)?.(message);
   };
 
   websocketServer.on("connection", (socket) => {
-    const sendToBrowser = createBootstrapSender(socket);
     let rendererWindow: RendererWindow | undefined;
+    const peak: Partial<TransportSample> = {};
+    let incomingBytes = 0;
+    let receivedMessages = 0;
+    const transport = bounded
+      ? new SharedWebSocketTransport("server", {
+          bufferedAmount: () => socket.bufferedAmount,
+          send: (frame) =>
+            socket.send(frame, (error) => {
+              if (error) transport?.fail(error);
+            }),
+          deliver: (message, bytes) => {
+            incomingBytes += bytes;
+            receivedMessages++;
+            if (!rendererWindow)
+              throw Error("IPC received before renderer readiness");
+            dispatch(rendererWindow, message as RendererToMainMessage, bytes);
+          },
+          fail: (error) => {
+            console.error("[ipc-bridge]", error.message);
+            socket.terminate();
+          },
+          change: metrics
+            ? (sample) => {
+                for (const key of Object.keys(
+                  sample,
+                ) as (keyof TransportSample)[])
+                  peak[key] = Math.max(peak[key] ?? 0, sample[key]);
+                outgoing.set(socket, sample.data);
+                aggregatePeak = Math.max(
+                  aggregatePeak,
+                  [...outgoing.values()].reduce((sum, value) => sum + value, 0),
+                );
+              }
+            : undefined,
+        })
+      : undefined;
+    const sendMessage = createBootstrapSender(
+      socket,
+      transport && ((message) => transport.send(message)),
+    );
+    const readyTimeout =
+      transport &&
+      setTimeout(
+        () => transport.fail(Error("IPC renderer readiness deadline exceeded")),
+        15_000,
+      ).unref();
+    const sendToBrowser = (message: MainToRendererMessage) =>
+      socket.readyState === WebSocket.OPEN && sendMessage(message);
     // Each tab is a real registered app view, with its own IPC client and ownership.
     const rendererReady = rendererWindowFactory
       .then(async (createWindow) => {
@@ -534,16 +628,18 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
           return undefined;
         }
         rendererWindow = window;
-        rendererSockets.set(window.webContents.id, socket);
+        rendererSenders.set(window.webContents.id, sendToBrowser);
         return window;
       })
       .catch((error) => {
         console.error("[ipc-bridge] failed to create renderer window", error);
-        socket.close(1011, "Renderer initialization failed");
+        if (transport) transport.fail(error);
+        else socket.close(1011, "Renderer initialization failed");
         return undefined;
       });
 
     const messagePorts = new Map<string, WebSocketMessagePort>();
+    let pendingRequests = 0;
     const dispatchPostMessage = (
       channel: string,
       message: unknown,
@@ -565,27 +661,35 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
     };
 
     socket.on("close", () => {
+      clearTimeout(readyTimeout);
+      transport?.close();
+      outgoing.delete(socket);
+      if (transport && metrics)
+        console.log(
+          JSON.stringify({
+            diagnostic: "shared-transport",
+            peak,
+            aggregatePeak,
+            incomingBytes,
+            receivedMessages,
+            rss: process.memoryUsage().rss,
+          }),
+        );
       for (const port of messagePorts.values()) {
         port.disconnect();
       }
       messagePorts.clear();
       if (rendererWindow) {
-        rendererSockets.delete(rendererWindow.webContents.id);
+        rendererSenders.delete(rendererWindow.webContents.id);
         rendererWindow.destroy();
       }
     });
 
-    socket.on("message", async (rawData) => {
-      const window = await rendererReady;
-      if (!window || socket.readyState !== WebSocket.OPEN) return;
-      let message: RendererToMainMessage;
-      try {
-        message = JSON.parse(String(rawData)) as RendererToMainMessage;
-      } catch (error) {
-        console.error("[ipc-bridge] invalid JSON payload", error);
-        return;
-      }
-
+    function dispatch(
+      window: RendererWindow,
+      message: RendererToMainMessage,
+      bytes = 0,
+    ): void {
       if (message.type === "ipc-renderer-send") {
         bridgeState.handleRendererSend?.(
           message.channel,
@@ -596,6 +700,8 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
       }
 
       if (message.type === "ipc-renderer-post-message") {
+        if (transport && messagePorts.size + message.portIds.length > 8)
+          throw Error("IPC port capacity exhausted");
         if (new Set(message.portIds).size !== message.portIds.length) {
           console.error("[ipc-bridge] duplicate transferred MessagePort id");
           return;
@@ -608,12 +714,9 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
           }
           const port = new WebSocketMessagePort(
             portId,
-            (message) => {
-              if (socket.readyState === WebSocket.OPEN) {
-                sendToBrowser(message);
-              }
-            },
+            sendToBrowser,
             () => messagePorts.delete(portId),
+            transport,
           );
           messagePorts.set(portId, port);
           return port;
@@ -625,7 +728,7 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
 
       if (message.type === "message-port-message") {
         withBootstrapRequest(message, () =>
-          messagePorts.get(message.portId)?.receiveMessage(message.data),
+          messagePorts.get(message.portId)?.receiveMessage(message.data, bytes),
         );
         return;
       }
@@ -636,6 +739,9 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
       }
 
       if (message.type === "workspace-directory-entries-request") {
+        if (transport && pendingRequests >= 64)
+          throw Error("IPC request capacity exhausted");
+        pendingRequests++;
         const { requestId } = message;
         getWorkspaceDirectoryEntries(message)
           .then((result) => {
@@ -645,9 +751,7 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
               ok: true,
               result,
             };
-            if (socket.readyState === WebSocket.OPEN) {
-              socket.send(JSON.stringify(payload));
-            }
+            sendToBrowser(payload);
           })
           .catch((error) => {
             const payload: MainToRendererMessage = {
@@ -656,14 +760,16 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
               ok: false,
               errorMessage: errorMessage(error),
             };
-            if (socket.readyState === WebSocket.OPEN) {
-              socket.send(JSON.stringify(payload));
-            }
-          });
+            sendToBrowser(payload);
+          })
+          .finally(() => pendingRequests--);
         return;
       }
 
       if (message.type === "ipc-renderer-invoke") {
+        if (transport && pendingRequests >= 64)
+          throw Error("IPC request capacity exhausted");
+        pendingRequests++;
         const { channel, requestId, args } = message;
         Promise.resolve(
           bridgeState.handleRendererInvoke?.(channel, args, window.id) ??
@@ -680,9 +786,7 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
               ok: true,
               result,
             };
-            if (socket.readyState === WebSocket.OPEN) {
-              socket.send(JSON.stringify(payload));
-            }
+            sendToBrowser(payload);
           })
           .catch((error) => {
             const payload: MainToRendererMessage = {
@@ -691,12 +795,46 @@ async function startIpcBridgeServer(options: ServerOptions): Promise<void> {
               ok: false,
               errorMessage: errorMessage(error),
             };
-            if (socket.readyState === WebSocket.OPEN) {
-              socket.send(JSON.stringify(payload));
-            }
-          });
+            sendToBrowser(payload);
+          })
+          .finally(() => pendingRequests--);
+        return;
       }
-    });
+      if (transport) sendMessage.onClockReply(message);
+    }
+
+    if (transport) {
+      socket.on("error", (error) => transport.fail(error));
+      socket.on("ping", () =>
+        transport.fail(Error("Unexpected WebSocket ping")),
+      );
+      socket.on("message", (rawData, binary) => {
+        if (binary && Buffer.isBuffer(rawData)) transport.receive(rawData);
+        else transport.fail(Error("Expected a binary IPC transport frame"));
+      });
+      // Keep the peer's finite pre-ready writes on the wire until a view exists.
+      socket.pause();
+      void rendererReady.then((window) => {
+        clearTimeout(readyTimeout);
+        if (window && socket.readyState === WebSocket.OPEN) {
+          transport.start();
+          socket.resume();
+        }
+      });
+    } else {
+      socket.on("message", async (rawData) => {
+        const window = await rendererReady;
+        if (!window || socket.readyState !== WebSocket.OPEN) return;
+        let message: RendererToMainMessage;
+        try {
+          message = JSON.parse(String(rawData)) as RendererToMainMessage;
+        } catch (error) {
+          console.error("[ipc-bridge] invalid JSON payload", error);
+          return;
+        }
+        dispatch(window, message);
+      });
+    }
   });
 
   await app.listen({ host: options.host, port: options.port });
