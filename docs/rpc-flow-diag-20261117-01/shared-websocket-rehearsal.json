@@ -1,0 +1,314 @@
+{
+  "steps": [
+    {
+      "step": "app-server",
+      "privateSocket": true,
+      "initialized": true,
+      "inheritedCgroup": true
+    },
+    {
+      "step": "A-before-launch",
+      "configuration": {
+        "mode": "normal",
+        "args": [
+          "/usr/bin/node-22",
+          "/tmp/rpc-shared.WwEAUO/active/src/server/main.js",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          "36565"
+        ],
+        "executable": "/usr/bin/node-22",
+        "cwd": "/tmp/rpc-shared.WwEAUO/work",
+        "env": [
+          "CODEX_API_BASE_URL=http://127.0.0.1:37697",
+          "CODEX_CLI_PATH=/tmp/rpc-shared.WwEAUO/bin/codex_remote_proxy",
+          "CODEX_HOME=/tmp/rpc-shared.WwEAUO/profile/codex",
+          "CODEX_UNIX_SOCKET=/tmp/rpc-shared.WwEAUO/control/daemon/bridge-2.sock",
+          "HOME=/tmp/rpc-shared.WwEAUO/profile",
+          "NODE_OPTIONS=--require=/tmp/rpc-shared.WwEAUO/control/rehearsal-fetch.cjs --require=/tmp/rpc-shared.WwEAUO/control/capture.cjs",
+          "PATH=/usr/local/bin:/usr/bin:/usr/sbin",
+          "REHEARSAL_UPSTREAM_URL=http://127.0.0.1:37697",
+          "TMPDIR=/tmp/rpc-shared.WwEAUO/profile/tmp",
+          "XDG_CACHE_HOME=/tmp/rpc-shared.WwEAUO/profile/cache",
+          "XDG_CONFIG_HOME=/tmp/rpc-shared.WwEAUO/profile/config",
+          "XDG_DATA_HOME=/tmp/rpc-shared.WwEAUO/profile/data"
+        ],
+        "envSha256": "bde8f04d1d3d0f8fed973e140b4f5414d58259a2b79b8f125a58ae2b0ae84a57"
+      },
+      "artifacts": {
+        "src/server/main.js": "ab95984d72f7b13c12b2ed113910bd71417e165f443dfc81b1afe1b0e07efc0b",
+        "src/server/electron/index.js": "b9d08bc0628e06a067023dba3172f042dc00cb64fecedde05e940f33619efcd0",
+        "scratch/asar/package.json": "97e6c90d6760d306852720fcdbc4a2946e54bc406406e1d03711a194955d1e2e",
+        "scratch/asar/.vite/build/main-CqEoQDOU.js": "1899b199e7e5cd34fbb26eac41d7482d926901bced8f97c0932e04c07b63de93",
+        "scratch/asar/.vite/build/startup-requirements-C6B1x9gL.js": "25e69424e28b3103c6f1a94f7e9f5d3f54fe6aa9ba3671b855d5073984883843",
+        "scratch/asar/webview/assets/app-shared-8bd9d0399038.js": "3d004695e4d3ed068b803b0a195260c76d4801b978d6b7a06f39886185282167",
+        "scratch/asar/webview/assets/preload.js": "bfb70a81533f1d4800c6aba1afae903df0c7642e14f875cd779adae5bf62046d",
+        "scratch/asar/webview/assets/preload.js.br": "582ad6cd258faaa38d39bcd3fcb36f9f91195436fac7ef9b416902dc35cd3933",
+        "scratch/asar/webview/assets/preload.js.gz": "8efccf0e90ea19b781b58e3cc845d4d536cde4af09290a4a94dee4e014e7fb61"
+      },
+      "tls": {
+        "status": 200,
+        "verified": true,
+        "tls": "TLSv1.3"
+      }
+    },
+    {
+      "step": "A-before-health",
+      "protocol": ["legacy"],
+      "ipc": {
+        "ok": true,
+        "correctPath": true
+      },
+      "editorVisible": false,
+      "bodies": [
+        {
+          "id": 0,
+          "bytes": 1048576,
+          "sha256": "d1b8ccb22121f3f5a10485bfa78a7e83121f3bcaac5f3ea28309dd9817b19fce"
+        },
+        {
+          "id": 1,
+          "bytes": 1048576,
+          "sha256": "d1b8ccb22121f3f5a10485bfa78a7e83121f3bcaac5f3ea28309dd9817b19fce"
+        }
+      ],
+      "upstreamHits": 2,
+      "bodyMatches": true
+    },
+    {
+      "step": "A-before-stop",
+      "listenerReleased": true,
+      "childReaped": true,
+      "code": 0
+    },
+    {
+      "step": "B-launch",
+      "configuration": {
+        "mode": "normal",
+        "args": [
+          "/usr/bin/node-22",
+          "/tmp/rpc-shared.WwEAUO/active/src/server/main.js",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          "36565"
+        ],
+        "executable": "/usr/bin/node-22",
+        "cwd": "/tmp/rpc-shared.WwEAUO/work",
+        "env": [
+          "CODEX_API_BASE_URL=http://127.0.0.1:37697",
+          "CODEX_CLI_PATH=/tmp/rpc-shared.WwEAUO/bin/codex_remote_proxy",
+          "CODEX_HOME=/tmp/rpc-shared.WwEAUO/profile/codex",
+          "CODEX_UNIX_SOCKET=/tmp/rpc-shared.WwEAUO/control/daemon/bridge-2.sock",
+          "CODEX_WEB_SHARED_TRANSPORT=1",
+          "CODEX_WEB_TRANSPORT_METRICS=1",
+          "HOME=/tmp/rpc-shared.WwEAUO/profile",
+          "NODE_OPTIONS=--require=/tmp/rpc-shared.WwEAUO/control/rehearsal-fetch.cjs --require=/tmp/rpc-shared.WwEAUO/control/capture.cjs",
+          "PATH=/usr/local/bin:/usr/bin:/usr/sbin",
+          "REHEARSAL_UPSTREAM_URL=http://127.0.0.1:37697",
+          "TMPDIR=/tmp/rpc-shared.WwEAUO/profile/tmp",
+          "XDG_CACHE_HOME=/tmp/rpc-shared.WwEAUO/profile/cache",
+          "XDG_CONFIG_HOME=/tmp/rpc-shared.WwEAUO/profile/config",
+          "XDG_DATA_HOME=/tmp/rpc-shared.WwEAUO/profile/data"
+        ],
+        "envSha256": "9292e12475de5e71965ef970d3935be0771fe0aefc05fa8a884643235554998a"
+      },
+      "artifacts": {
+        "src/server/main.js": "4abd2cf5a2043d85eeb282e80cfc8b85d43a32f71153b46b1f986cfec6cbd7f4",
+        "src/server/electron/index.js": "b9d08bc0628e06a067023dba3172f042dc00cb64fecedde05e940f33619efcd0",
+        "scratch/asar/package.json": "97e6c90d6760d306852720fcdbc4a2946e54bc406406e1d03711a194955d1e2e",
+        "scratch/asar/.vite/build/main-CqEoQDOU.js": "18cbca9e257d5437fdb8161ac9de88f19b94230cc88413940b2e9f2762bb9d66",
+        "scratch/asar/.vite/build/startup-requirements-C6B1x9gL.js": "b87828b3d85706d0dfe40976ebbeea8525102189efe841388687a73492db6a6a",
+        "scratch/asar/webview/assets/app-shared-8bd9d0399038.js": "883b1095271264d70f157b92c90669c7370399c82b8848d52fbaecd85e31d594",
+        "scratch/asar/webview/assets/preload.js": "365c6427f0e96a2be8be4a89687000c7fe2f46f4330026fd170f06734e3b2908",
+        "scratch/asar/webview/assets/preload.js.br": "fcbb7035665281b14703b1650406a4e79a6e14bf711a77c569add053c66e523d",
+        "scratch/asar/webview/assets/preload.js.gz": "ac14c53fcdea97aac933550c97b07738ce083b6611fd5071a5e569d9cae9393c"
+      },
+      "tls": {
+        "status": 200,
+        "verified": true,
+        "tls": "TLSv1.3"
+      }
+    },
+    {
+      "step": "B-health",
+      "protocol": ["codex-ipc-budget-v1"],
+      "ipc": {
+        "ok": true,
+        "correctPath": true
+      },
+      "editorVisible": false,
+      "bodies": [
+        {
+          "id": 0,
+          "bytes": 1048576,
+          "sha256": "d1b8ccb22121f3f5a10485bfa78a7e83121f3bcaac5f3ea28309dd9817b19fce"
+        },
+        {
+          "id": 1,
+          "bytes": 1048576,
+          "sha256": "d1b8ccb22121f3f5a10485bfa78a7e83121f3bcaac5f3ea28309dd9817b19fce"
+        }
+      ],
+      "upstreamHits": 4,
+      "bodyMatches": true
+    },
+    {
+      "step": "B-crash-recovery",
+      "noAutomaticRestart": true,
+      "recoveredByModeTransition": true,
+      "browserReloaded": true,
+      "upgrades": 2,
+      "socketCloses": 2,
+      "inheritedCgroup": true
+    },
+    {
+      "step": "B-stop",
+      "listenerReleased": true,
+      "childReaped": true,
+      "code": 0
+    },
+    {
+      "step": "A-after-launch",
+      "configuration": {
+        "mode": "normal",
+        "args": [
+          "/usr/bin/node-22",
+          "/tmp/rpc-shared.WwEAUO/active/src/server/main.js",
+          "--host",
+          "127.0.0.1",
+          "--port",
+          "36565"
+        ],
+        "executable": "/usr/bin/node-22",
+        "cwd": "/tmp/rpc-shared.WwEAUO/work",
+        "env": [
+          "CODEX_API_BASE_URL=http://127.0.0.1:37697",
+          "CODEX_CLI_PATH=/tmp/rpc-shared.WwEAUO/bin/codex_remote_proxy",
+          "CODEX_HOME=/tmp/rpc-shared.WwEAUO/profile/codex",
+          "CODEX_UNIX_SOCKET=/tmp/rpc-shared.WwEAUO/control/daemon/bridge-2.sock",
+          "HOME=/tmp/rpc-shared.WwEAUO/profile",
+          "NODE_OPTIONS=--require=/tmp/rpc-shared.WwEAUO/control/rehearsal-fetch.cjs --require=/tmp/rpc-shared.WwEAUO/control/capture.cjs",
+          "PATH=/usr/local/bin:/usr/bin:/usr/sbin",
+          "REHEARSAL_UPSTREAM_URL=http://127.0.0.1:37697",
+          "TMPDIR=/tmp/rpc-shared.WwEAUO/profile/tmp",
+          "XDG_CACHE_HOME=/tmp/rpc-shared.WwEAUO/profile/cache",
+          "XDG_CONFIG_HOME=/tmp/rpc-shared.WwEAUO/profile/config",
+          "XDG_DATA_HOME=/tmp/rpc-shared.WwEAUO/profile/data"
+        ],
+        "envSha256": "bde8f04d1d3d0f8fed973e140b4f5414d58259a2b79b8f125a58ae2b0ae84a57"
+      },
+      "artifacts": {
+        "src/server/main.js": "ab95984d72f7b13c12b2ed113910bd71417e165f443dfc81b1afe1b0e07efc0b",
+        "src/server/electron/index.js": "b9d08bc0628e06a067023dba3172f042dc00cb64fecedde05e940f33619efcd0",
+        "scratch/asar/package.json": "97e6c90d6760d306852720fcdbc4a2946e54bc406406e1d03711a194955d1e2e",
+        "scratch/asar/.vite/build/main-CqEoQDOU.js": "1899b199e7e5cd34fbb26eac41d7482d926901bced8f97c0932e04c07b63de93",
+        "scratch/asar/.vite/build/startup-requirements-C6B1x9gL.js": "25e69424e28b3103c6f1a94f7e9f5d3f54fe6aa9ba3671b855d5073984883843",
+        "scratch/asar/webview/assets/app-shared-8bd9d0399038.js": "3d004695e4d3ed068b803b0a195260c76d4801b978d6b7a06f39886185282167",
+        "scratch/asar/webview/assets/preload.js": "bfb70a81533f1d4800c6aba1afae903df0c7642e14f875cd779adae5bf62046d",
+        "scratch/asar/webview/assets/preload.js.br": "582ad6cd258faaa38d39bcd3fcb36f9f91195436fac7ef9b416902dc35cd3933",
+        "scratch/asar/webview/assets/preload.js.gz": "8efccf0e90ea19b781b58e3cc845d4d536cde4af09290a4a94dee4e014e7fb61"
+      },
+      "tls": {
+        "status": 200,
+        "verified": true,
+        "tls": "TLSv1.3"
+      }
+    },
+    {
+      "step": "A-after-health",
+      "protocol": ["legacy"],
+      "ipc": {
+        "ok": true,
+        "correctPath": true
+      },
+      "editorVisible": false,
+      "bodies": [
+        {
+          "id": 0,
+          "bytes": 1048576,
+          "sha256": "d1b8ccb22121f3f5a10485bfa78a7e83121f3bcaac5f3ea28309dd9817b19fce"
+        },
+        {
+          "id": 1,
+          "bytes": 1048576,
+          "sha256": "d1b8ccb22121f3f5a10485bfa78a7e83121f3bcaac5f3ea28309dd9817b19fce"
+        }
+      ],
+      "upstreamHits": 6,
+      "bodyMatches": true
+    },
+    {
+      "step": "A-after-stop",
+      "listenerReleased": true,
+      "childReaped": true,
+      "code": 0
+    },
+    {
+      "step": "rollback",
+      "exactRecordedArtifactsAndRuntime": true,
+      "upstreamHits": 6
+    }
+  ],
+  "isolation": {
+    "network": "net:[4026532571]",
+    "parentNetwork": "net:[4026531840]",
+    "memoryMax": 2147483648,
+    "memorySwapMax": 0,
+    "cgroup": "0::/user.slice/user-1000.slice/user@1000.service/app.slice/run-u14734.service",
+    "launcherSha256": "0b7c058e698bba7cf35d776eb9acf60daac526158a4e5a5ffd39268abd1c1db9",
+    "proxySha256": "3587a863875b23211e260592aec9123d0eab36e87bb412d99fecb351e72a73cc",
+    "appServerSha256": "b452ca20f838a8855a88a41050ee4a694033fff4ea3ecdad5633e6e0e8d13f2b"
+  },
+  "memory": {
+    "peak": 1004777472,
+    "events": "low 0\nhigh 0\nmax 0\noom 0\noom_kill 0\noom_group_kill 0"
+  },
+  "implementation": "122499e",
+  "normalizedBaselineSnapshotSha256": "de25bc2c298d15e1e0c1a9af5610476118330852e2e14e5e1020898bf71c92d2",
+  "postRollbackBaselineSha256": "de25bc2c298d15e1e0c1a9af5610476118330852e2e14e5e1020898bf71c92d2",
+  "productionObservation": {
+    "beforeAndAfterPid": 2397437,
+    "parentPid": 2394939,
+    "mode": "normal",
+    "listenerPort": 8214
+  },
+  "candidateBodyTransport": {
+    "connectionDataReservationPeakBytes": 446714,
+    "nativeWebSocketBufferedPeakBytes": 350032,
+    "rawSourceStagingPeakBytes": 262144,
+    "parkedWriterCountPeak": 2,
+    "observedDesktopRssAtBrowserSocketCloseBytes": 320229376
+  },
+  "benchmarkUnits": {
+    "application": {
+      "memoryMax": 2147483648,
+      "memorySwapMax": 0,
+      "memoryPeak": 636866560,
+      "oomEvents": 0,
+      "oomKills": 0
+    },
+    "source-check": {
+      "memoryMax": 2147483648,
+      "memorySwapMax": 0,
+      "memoryPeak": 633257984,
+      "oomEvents": 0,
+      "oomKills": 0
+    },
+    "packet": {
+      "memoryMax": 2147483648,
+      "memorySwapMax": 0,
+      "memoryPeak": 728342528,
+      "oomEvents": 0,
+      "oomKills": 0
+    }
+  },
+  "packetIsolation": {
+    "namespace": "net:[4026532682]",
+    "parentNamespace": "net:[4026531840]",
+    "parentQdiscKindBeforeAndAfter": "noqueue",
+    "lastQdiscBacklogBytesPerCase": [0, 0, 0, 0, 0, 0, 0, 0],
+    "lastQdiscQueueLengthPerCase": [0, 0, 0, 0, 0, 0, 0, 0]
+  }
+}
