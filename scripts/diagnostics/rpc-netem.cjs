@@ -53,8 +53,12 @@ async function main() {
     mtu: 1500,
     offloads,
   };
+  const policies = process.env.RPC_CONCURRENCY_POLICIES?.split(",") || [
+    "observe",
+    "stop",
+  ];
   for (const profile of ["netem-bandwidth", "netem-variable"])
-    for (const policy of ["observe", "stop"])
+    for (const policy of policies)
       for (let repeat = 0; repeat < 2; repeat++)
         for (const mode of repeat
           ? ["512k", "baseline"]

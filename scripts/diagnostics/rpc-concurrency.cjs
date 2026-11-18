@@ -6,9 +6,47 @@ const { spawnSync } = require("node:child_process");
 const { createHash } = require("node:crypto");
 const { createRpcDiagnostics } = require("./rpc-runtime.cjs");
 const { ResourceBudget, limits } = require("./rpc-resource-budget.cjs");
+const {
+  TransportCapacity,
+  patchTransportWriter,
+} = require("./rpc-transport-capacity.cjs");
 const { flushReady } = require("./rpc-resource.cjs");
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const profiles = [
+  {
+    name: "source-error",
+    chunks: 24,
+    rate: 2097152,
+    forward: 20,
+    ack: 40,
+    sourceErrorAt: 8,
+  },
+  {
+    name: "compressed-variable",
+    chunks: 48,
+    rate: 8388608,
+    early: 5,
+    forward: 130,
+    ack: 30,
+    compress: true,
+  },
+  {
+    name: "port-hold",
+    chunks: 24,
+    rate: 8388608,
+    forward: 10,
+    ack: 30,
+    portHoldMs: 400,
+  },
+  {
+    name: "receipt-timeout",
+    chunks: 24,
+    rate: 8388608,
+    forward: 10,
+    ack: 30,
+    portHoldMs: 2000,
+    receiptTimeoutMs: 500,
+  },
   {
     name: "atomic-boundary",
     chunks: 8,
@@ -185,7 +223,9 @@ function kernelTx(connections) {
     }
   return total;
 }
-async function worker(fixture, mode, config, enabled) {
+async function worker(fixture, mode, config, enabled, bounded = false) {
+  if (bounded && !enabled)
+    throw Error("Bounded transport requires fixture admission limits");
   const { chromium } = require(process.env.PLAYWRIGHT_MODULE),
     { WebSocketServer } = require("ws");
   const cores = JSON.parse(fs.readFileSync(fixture));
@@ -228,6 +268,8 @@ async function worker(fixture, mode, config, enabled) {
     if (c.closed) return;
     c.closed = true;
     c.closedAt = performance.now();
+    c.capacity?.close(Error("isolated connection closed"));
+    c.wireBytes = c.socket.bytesWritten - c.initialWireBytes;
     for (const j of c.jobs.values()) {
       clearTimeout(j.timer);
       j.text = undefined;
@@ -240,7 +282,10 @@ async function worker(fixture, mode, config, enabled) {
     budget.close(c.id);
   };
   const d = createRpcDiagnostics("host", true, () => {});
-  const host = instantiate(cores[mode], d);
+  const host = instantiate(
+    bounded ? patchTransportWriter(cores[mode]) : cores[mode],
+    d,
+  );
   const states = new Map(),
     stateOwner = new WeakMap();
   let sendingConnection;
@@ -301,16 +346,19 @@ async function worker(fixture, mode, config, enabled) {
       budget.set("flight", e.connection, String(e.id), this.bytesInFlight);
   };
   const credit = d.credit;
+  const creditWaits = [];
   let pendingCredit = 0,
     rejectedCredit = 0;
   d.credit = (s) => {
     pendingCredit++;
+    const started = performance.now();
     const cid = stateOwner.get(s)?.connection,
       c = connections.get(cid);
     if (c) c.pendingCredit = (c.pendingCredit || 0) + 1;
     const end = credit(s);
     return (outcome) => {
       pendingCredit--;
+      creditWaits.push(performance.now() - started);
       if (c) c.pendingCredit--;
       if (cid !== undefined) markDrained(cid);
       if (outcome === "rejected") rejectedCredit++;
@@ -320,7 +368,13 @@ async function worker(fixture, mode, config, enabled) {
   const server = new WebSocketServer({
     host: "127.0.0.1",
     port: 0,
-    perMessageDeflate: false,
+    perMessageDeflate: config.compress
+      ? {
+          serverNoContextTakeover: true,
+          clientNoContextTakeover: true,
+          threshold: 1024,
+        }
+      : false,
   });
   await new Promise((r) => server.once("listening", r));
   server.on("connection", (ws, req) => {
@@ -328,6 +382,8 @@ async function worker(fixture, mode, config, enabled) {
     const c = {
       id: cid,
       ws,
+      socket: ws._socket,
+      initialWireBytes: ws._socket.bytesWritten,
       rx: [],
       jobs: new Map(),
       shape: 0,
@@ -337,6 +393,15 @@ async function worker(fixture, mode, config, enabled) {
       closed: false,
     };
     connections.set(cid, c);
+    if (bounded)
+      c.capacity = new TransportCapacity({
+        change: (bytes) => budget.set("transport", cid, "reserved", bytes),
+        fail(error) {
+          c.transportError = error.message;
+          ws.terminate();
+        },
+        timeoutMs: config.receiptTimeoutMs,
+      });
     ws.on("close", () => close(c));
     ws.on("error", () => close(c));
     if (!budget.admit(cid)) {
@@ -353,6 +418,10 @@ async function worker(fixture, mode, config, enabled) {
     ws.on("message", (raw) => {
       if (c.closed) return;
       const m = JSON.parse(String(raw));
+      if (c.capacity && Object.hasOwn(m, "transportReceipt")) {
+        c.capacity.receipt(m.transportReceipt);
+        return;
+      }
       if (c.resolve) {
         const r = c.resolve;
         c.resolve = c.reject = undefined;
@@ -378,6 +447,14 @@ async function worker(fixture, mode, config, enabled) {
           new ReadableStream(
             {
               pull(controller) {
+                if (
+                  cid === "0" &&
+                  id === 0 &&
+                  p.produced === config.sourceErrorAt
+                ) {
+                  controller.error(Error("isolated source failure"));
+                  return;
+                }
                 if (p.produced === count) {
                   p.eof = true;
                   controller.close();
@@ -418,13 +495,19 @@ async function worker(fixture, mode, config, enabled) {
     const session = new host.Session(
       {
         encodingLevel: "jsonCompatible",
+        beforeStreamWrite: c.capacity?.write.bind(c.capacity),
         send(m) {
           sendingConnection = cid;
           if (c.closed || (budget.tripped && enabled))
             throw Error("isolated stopped transport");
-          const text = JSON.stringify(m),
-            bytes = Buffer.byteLength(text);
-          if (!budget.reserve("transport", cid, "outbound", bytes))
+          const text = JSON.stringify(
+              bounded
+                ? { type: "message-port-message", portId: "fixture", data: m }
+                : m,
+            ),
+            bytes = Buffer.byteLength(text),
+            ticket = c.capacity?.enqueue(m, bytes);
+          if (!bounded && !budget.reserve("transport", cid, "outbound", bytes))
             throw Error("isolated transport budget");
           if (m[0] === "stream" && m[1]?.[2]?.[0] === "write") c.writes++;
           const forward =
@@ -435,7 +518,7 @@ async function worker(fixture, mode, config, enabled) {
           c.available =
             Math.max(now, c.available) + (bytes / config.rate) * 1000;
           const id = ++c.sequence,
-            job = { text, bytes };
+            job = { text, bytes, ticket };
           c.jobs.set(id, job);
           c.shape += bytes;
           job.timer = setTimeout(
@@ -443,16 +526,18 @@ async function worker(fixture, mode, config, enabled) {
               if (c.closed) return;
               job.ready = true;
               flushReady(c.jobs, (key, next) => {
-                ws.send(next.text, () => {
+                if (next.ticket && !c.capacity.forward(next.ticket)) return;
+                ws.send(next.text, (error) => {
+                  if (next.ticket) c.capacity.written(next.ticket, error);
                   if (c.jobs.delete(key)) {
                     c.shape -= next.bytes;
-                    if (!c.closed)
+                    if (!bounded && !c.closed)
                       budget.release("transport", cid, "outbound", next.bytes);
                   }
                   next.text = undefined;
                 });
                 maxWs = Math.max(maxWs, ws.bufferedAmount);
-                if (!c.closed)
+                if (!bounded && !c.closed)
                   budget.set("transport", cid, "socket", ws.bufferedAmount);
               });
             },
@@ -523,7 +608,7 @@ async function worker(fixture, mode, config, enabled) {
         fs.renameSync(config.progressFile + ".tmp", config.progressFile);
       }
       for (const c of connections.values())
-        if (!c.closed) {
+        if (!bounded && !c.closed) {
           budget.set("transport", c.id, "socket", c.ws.bufferedAmount);
           budget.set(
             "transport",
@@ -647,42 +732,97 @@ async function worker(fixture, mode, config, enabled) {
     // Each page is one independent RPC connection; its streams share that socket.
     const run = async (page, client) =>
       page.evaluate(
-        async ({ url, config, client, enabled, peerLimits }) => {
+        async ({ url, config, client, enabled, bounded, peerLimits }) => {
           const { api, d, counters } = globalThis.fixture;
           const ws = new WebSocket(url + "?client=" + client),
             channel = new MessageChannel(),
             queue = [],
-            timers = new Set();
+            timers = new Set(),
+            portStaging = [];
           let pending,
             closed = false,
             wsPeak = 0,
             ackBytes = 0,
             ackPeak = 0,
             portBytes = 0,
-            portPeak = 0;
+            portPeak = 0,
+            stageBytes = 0,
+            stagePeak = 0,
+            receivePeak = 0,
+            queuedBytes = 0,
+            received = 0,
+            portHold,
+            portHeld = false;
           const pause = (ms) => new Promise((r) => setTimeout(r, ms));
           const close = () => {
             if (closed) return;
             closed = true;
             for (const job of timers) clearTimeout(job.timer);
             timers.clear();
+            clearTimeout(portHold);
+            portStaging.length = 0;
+            stageBytes = portBytes = queuedBytes = 0;
+            channel.port1.close();
+            channel.port2.close();
             ackBytes = 0;
             queue.length = 0;
             pending?.reject(Error("closed"));
             pending = undefined;
+          };
+          const send = (text, size) => {
+            if (ws.readyState !== 1) return;
+            if (
+              bounded &&
+              ackBytes + ws.bufferedAmount + size + 14 > peerLimits.reverse
+            ) {
+              globalThis.peerBreach(
+                "reverse",
+                ackBytes + ws.bufferedAmount + size + 14,
+                peerLimits.reverse,
+              );
+              close();
+              ws.close();
+              return;
+            }
+            ws.send(text);
+            wsPeak = Math.max(wsPeak, ws.bufferedAmount);
+          };
+          const accept = (delivery) => {
+            if (bounded) {
+              const text = JSON.stringify({
+                transportReceipt: delivery.sequence,
+              });
+              send(text, text.length);
+            }
+            return delivery.m;
+          };
+          const pumpPort = () => {
+            if (portHold || closed) return;
+            while (
+              portStaging.length &&
+              portBytes + portStaging[0].size <= peerLimits.receive
+            ) {
+              const next = portStaging.shift();
+              stageBytes -= next.size;
+              portBytes += next.size;
+              portPeak = Math.max(portPeak, portBytes);
+              channel.port1.postMessage(next);
+            }
           };
           channel.port1.onmessage = (e) => {
             if (closed) return;
             const text = JSON.stringify(e.data),
               size = new TextEncoder().encode(text).byteLength,
               job = { text, size };
-            if (ackBytes + size > (config.peerFault ? 1 : peerLimits.reverse)) {
+            const proposed =
+              ackBytes + size + (bounded ? ws.bufferedAmount + 14 : 0);
+            if (proposed > (config.peerFault ? 1 : peerLimits.reverse)) {
               globalThis.peerBreach(
                 "reverse",
-                ackBytes + size,
+                proposed,
                 config.peerFault ? 1 : peerLimits.reverse,
               );
-              if (enabled) {
+              if (enabled || bounded) {
                 close();
                 ws.close();
                 return;
@@ -697,10 +837,7 @@ async function worker(fixture, mode, config, enabled) {
                 if (!next.ready) break;
                 timers.delete(next);
                 ackBytes -= next.size;
-                if (ws.readyState === 1) {
-                  ws.send(next.text);
-                  wsPeak = Math.max(wsPeak, ws.bufferedAmount);
-                }
+                send(next.text, next.size);
               }
             }, config.ack);
           };
@@ -708,6 +845,24 @@ async function worker(fixture, mode, config, enabled) {
             if (closed) return;
             const m = JSON.parse(e.data),
               size = new TextEncoder().encode(e.data).byteLength;
+            if (bounded) {
+              stageBytes += size;
+              stagePeak = Math.max(stagePeak, stageBytes);
+              receivePeak = Math.max(
+                receivePeak,
+                stageBytes + portBytes + queuedBytes,
+              );
+              portStaging.push({ m: m.data, size, sequence: ++received });
+              if (config.portHoldMs && !portHeld && m.data[0] === "stream") {
+                portHeld = true;
+                portHold = setTimeout(() => {
+                  portHold = undefined;
+                  pumpPort();
+                }, config.portHoldMs);
+              }
+              pumpPort();
+              return;
+            }
             if (portBytes + size > peerLimits.receive) {
               globalThis.peerBreach(
                 "receive",
@@ -725,13 +880,17 @@ async function worker(fixture, mode, config, enabled) {
             channel.port1.postMessage({ m, size });
           };
           channel.port2.onmessage = (e) => {
-            portBytes -= e.data.size;
             if (closed) return;
+            portBytes -= e.data.size;
+            if (bounded) pumpPort();
             if (pending) {
               const p = pending;
               pending = undefined;
-              p.resolve(e.data.m);
-            } else queue.push(e.data.m);
+              p.resolve(accept(e.data));
+            } else {
+              queuedBytes += e.data.size;
+              queue.push(e.data);
+            }
           };
           ws.onclose = close;
           ws.onerror = close;
@@ -743,7 +902,11 @@ async function worker(fixture, mode, config, enabled) {
               channel.port2.postMessage(m);
             },
             receive() {
-              if (queue.length) return Promise.resolve(queue.shift());
+              if (queue.length) {
+                const delivery = queue.shift();
+                queuedBytes -= delivery.size;
+                return Promise.resolve(accept(delivery));
+              }
               if (closed) return Promise.reject(Error("closed"));
               return new Promise(
                 (resolve, reject) => (pending = { resolve, reject }),
@@ -765,7 +928,8 @@ async function worker(fixture, mode, config, enabled) {
                   bytesRead = 0,
                   ended = false,
                   canceled = false,
-                  error = false;
+                  error = false,
+                  sourceError = false;
                 try {
                   const response = await session.getRemoteMain().fetch(id),
                     reader = response.body.getReader();
@@ -821,8 +985,17 @@ async function worker(fixture, mode, config, enabled) {
                 } catch (e) {
                   if (String(e).includes("CORRUPT")) throw e;
                   error = true;
+                  sourceError = String(e).includes("isolated source failure");
                 }
-                return { id, count, bytesRead, ended, canceled, error };
+                return {
+                  id,
+                  count,
+                  bytesRead,
+                  ended,
+                  canceled,
+                  error,
+                  sourceError,
+                };
               }),
             );
             outcomes.push(...values);
@@ -837,9 +1010,8 @@ async function worker(fixture, mode, config, enabled) {
             rxMessages: queue.length,
           };
           d.close();
+          close();
           ws.close();
-          channel.port1.close();
-          channel.port2.close();
           return {
             client,
             outcomes,
@@ -850,6 +1022,9 @@ async function worker(fixture, mode, config, enabled) {
             ackPeak,
             wsPeak,
             portPeak,
+            stagePeak,
+            receivePeak,
+            extensions: ws.extensions,
           };
         },
         {
@@ -857,6 +1032,7 @@ async function worker(fixture, mode, config, enabled) {
           config,
           client,
           enabled,
+          bounded,
           peerLimits: limits.peer,
         },
       );
@@ -884,7 +1060,43 @@ async function worker(fixture, mode, config, enabled) {
     for (const p of pageResults) {
       assert.equal(p.final.writerBytes, 0);
       assert.equal(p.final.ackBytes, 0);
+      if (bounded) {
+        assert.ok(p.portPeak <= limits.peer.receive);
+        assert.ok(p.receivePeak <= limits.transport.connection);
+        assert.deepEqual(
+          p.extensions.split(/;\s*/),
+          config.compress
+            ? [
+                "permessage-deflate",
+                "server_no_context_takeover",
+                "client_no_context_takeover",
+              ]
+            : [""],
+        );
+      }
     }
+    if (bounded) {
+      assert.ok(
+        [...connections.values()].every(
+          (c) => !c.capacity.pending.size && !c.capacity.waiters.size,
+        ),
+      );
+      assert.ok(
+        (budget.peaks.transport?.connection || 0) <=
+          limits.transport.connection,
+      );
+      assert.ok((budget.peaks.transport?.total || 0) <= limits.transport.total);
+      if (config.portHoldMs && !config.receiptTimeoutMs)
+        assert.ok(
+          [...connections.values()].every((c) => c.capacity.stats.waits > 0),
+        );
+    }
+    if (bounded && config.receiptTimeoutMs)
+      assert.ok(
+        [...connections.values()].every(
+          (c) => c.transportError === "Transport receipt deadline exceeded",
+        ),
+      );
     if (!budget.tripped) {
       for (const p of pageResults)
         assert.equal(
@@ -893,8 +1105,16 @@ async function worker(fixture, mode, config, enabled) {
         );
       for (const p of pageResults)
         for (const o of p.outcomes) {
-          if (config.disconnectAt && p.client === 0)
+          if (
+            (bounded && config.receiptTimeoutMs) ||
+            (config.disconnectAt && p.client === 0)
+          )
             assert.ok(o.error, "disconnected client must reject");
+          else if (config.sourceErrorAt && p.client === 0 && o.id === 0)
+            assert.ok(
+              o.error && o.sourceError && !o.ended,
+              "upstream error must reach the reader",
+            );
           else if (config.cancelAt && p.client === 0 && o.id === 0) {
             assert.ok(o.canceled);
             const source = producers.get("0/0");
@@ -928,7 +1148,12 @@ async function worker(fixture, mode, config, enabled) {
       config,
       cleanupMs,
       enabled,
-      status: budget.tripped ? "budget-stop" : "complete",
+      bounded,
+      status: budget.tripped
+        ? "budget-stop"
+        : [...connections.values()].some((c) => c.transportError)
+          ? "transport-stop"
+          : "complete",
       runtime: {
         initial: 262144,
         minimum: host.minimum,
@@ -942,11 +1167,21 @@ async function worker(fixture, mode, config, enabled) {
       maxWs,
       pendingCredit,
       rejectedCredit,
+      creditWait: {
+        count: creditWaits.length,
+        sumMs: creditWaits.reduce((sum, ms) => sum + ms, 0),
+        p95Ms: creditWaits.toSorted((a, b) => a - b)[
+          Math.ceil(creditWaits.length * 0.95) - 1
+        ],
+      },
       actions,
       lifecycle: [...connections.values()].map((c) => ({
         cid: c.id,
         closedAt: c.closedAt,
         drainedAt: c.drainedAt,
+        wireBytes: c.wireBytes,
+        transportError: c.transportError,
+        capacity: c.capacity?.stats,
       })),
       elapsedMs: elapsed,
       throughputMiBs:
@@ -1008,10 +1243,6 @@ async function main() {
     console.log(prepare(process.argv[3]));
     return;
   }
-  if (process.argv[2] === "prepare") {
-    console.log(prepare(process.argv[3]));
-    return;
-  }
   if (process.argv[2] === "worker") {
     console.log(
       JSON.stringify(
@@ -1019,7 +1250,8 @@ async function main() {
           process.argv[3],
           process.argv[4],
           JSON.parse(process.argv[5]),
-          process.argv[6] === "stop",
+          ["stop", "bounded-stop"].includes(process.argv[6]),
+          process.argv[6] === "bounded-stop",
         ),
       ),
     );
@@ -1038,13 +1270,17 @@ async function main() {
   if (prepared.status !== 0) throw Error(prepared.stderr);
   const fixture = prepared.stdout.trim(),
     rows = [];
-  const selected = profiles.filter(
-    (p) =>
-      !process.env.RPC_CONCURRENCY_PROFILES ||
-      process.env.RPC_CONCURRENCY_PROFILES.split(",").includes(p.name),
+  const selected = profiles.filter((p) =>
+    process.env.RPC_CONCURRENCY_PROFILES
+      ? process.env.RPC_CONCURRENCY_PROFILES.split(",").includes(p.name)
+      : !p.compress && !p.portHoldMs && !p.sourceErrorAt,
   );
+  const policies = process.env.RPC_CONCURRENCY_POLICIES?.split(",") || [
+    "observe",
+    "stop",
+  ];
   for (const config of selected)
-    for (const policy of ["observe", "stop"])
+    for (const policy of policies)
       for (
         let repeat = 0;
         repeat < Number(process.env.RPC_CONCURRENCY_REPEATS || 2);
@@ -1078,7 +1314,9 @@ async function main() {
             result.stderr || "",
           );
           if (result.status !== 0)
-            throw Error(name + ": " + result.stderr + " " + result.stdout);
+            throw Error(
+              `${name}: ${result.error || result.signal || result.status} ${result.stderr} ${result.stdout}`,
+            );
           rows.push({ ...JSON.parse(result.stdout), repeat });
           fs.writeFileSync(
             path.join(output, "results.json"),

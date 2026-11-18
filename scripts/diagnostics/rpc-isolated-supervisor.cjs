@@ -8,7 +8,13 @@ const { createHash } = require("node:crypto");
 const assert = require("node:assert/strict");
 const hash = (s) => createHash("sha256").update(s).digest("hex");
 const pause = (ms) => new Promise((r) => setTimeout(r, ms));
-const modes = ["baseline", "512k"];
+const {
+  TransportCapacity,
+  patchTransportWriter,
+} = require("./rpc-transport-capacity.cjs");
+const { limits } = require("./rpc-resource-budget.cjs");
+const boundedMode = "bounded-512k";
+const modes = ["baseline", "512k", boundedMode];
 function api(code) {
   return new Function("__codexRpcDiag", "t", code)(undefined, (fn) => {
     let done = false;
@@ -42,6 +48,7 @@ async function service(root, mode, port) {
     core = loaded.core;
   let server, wsServer;
   const connections = new Set();
+  const bounded = mode === boundedMode;
   let produced = 0,
     canceled = 0,
     exiting = false;
@@ -75,16 +82,30 @@ async function service(root, mode, port) {
         produced,
         canceled,
         budgetEnabled: budget.enabled,
+        bounded,
+        ...(bounded ? { forwardLimit: limits.transport.connection } : {}),
       }),
     );
   });
   wsServer = new WebSocketServer({ server, perMessageDeflate: false });
   wsServer.on("connection", (ws) => {
     connections.add(ws);
+    if (bounded && connections.size > limits.clients) {
+      connections.delete(ws);
+      ws.terminate();
+      return;
+    }
     const queue = [];
+    const capacity = bounded
+      ? new TransportCapacity({
+          change() {},
+          fail: () => ws.terminate(),
+        })
+      : undefined;
     let pending, error;
     const fail = () => {
       error = Error("rehearsal disconnect");
+      capacity?.close(error);
       pending?.reject(error);
       pending = undefined;
       queue.length = 0;
@@ -94,20 +115,29 @@ async function service(root, mode, port) {
     ws.on("error", fail);
     ws.on("message", (raw) => {
       const m = JSON.parse(String(raw));
+      if (capacity && Object.hasOwn(m, "transportReceipt")) {
+        capacity.receipt(m.transportReceipt);
+        return;
+      }
       if (pending) {
         const p = pending;
         pending = undefined;
         p.resolve(m);
       } else queue.push(m);
     });
+    let streams = 0;
     class Service extends core.Target {
       fetch(count = 16) {
+        if (bounded && streams >= limits.streamsPerClient)
+          throw Error("Rehearsal stream admission limit");
+        streams++;
         let i = 0;
         return new Response(
           new ReadableStream(
             {
               pull(c) {
                 if (i === count) {
+                  streams--;
                   c.close();
                   return;
                 }
@@ -115,6 +145,7 @@ async function service(root, mode, port) {
                 c.enqueue(new Uint8Array(65536).fill(i++ % 251));
               },
               cancel() {
+                streams--;
                 canceled++;
               },
             },
@@ -126,9 +157,21 @@ async function service(root, mode, port) {
     new core.Session(
       {
         encodingLevel: "jsonCompatible",
+        beforeStreamWrite: capacity?.write.bind(capacity),
         send(m) {
           if (error) throw error;
-          ws.send(JSON.stringify(m));
+          const text = JSON.stringify(
+            capacity
+              ? { type: "message-port-message", portId: "fixture", data: m }
+              : m,
+          );
+          if (!capacity) {
+            ws.send(text);
+            return;
+          }
+          const ticket = capacity.enqueue(m, Buffer.byteLength(text));
+          if (capacity.forward(ticket))
+            ws.send(text, (error) => capacity.written(ticket, error));
         },
         receive() {
           if (queue.length) return Promise.resolve(queue.shift());
@@ -315,7 +358,10 @@ function init(root, fixture) {
   for (const mode of modes) {
     const dir = path.join(root, "releases", mode);
     fs.mkdirSync(dir, { recursive: true });
-    const code = cores[mode],
+    const code =
+        mode === boundedMode
+          ? patchTransportWriter(cores["512k"])
+          : cores[mode],
       core = api(code);
     fs.writeFileSync(path.join(dir, "host.js"), code);
     fs.writeFileSync(
@@ -348,18 +394,25 @@ function health(port) {
       .on("error", reject);
   });
 }
-async function transfer(root, port, count = 16, hold = false) {
+async function transfer(root, port, count = 16, hold = false, bounded = false) {
   const { WebSocket } = require("ws"),
     core = api(fs.readFileSync(path.join(root, "browser-core.js"), "utf8"));
   const ws = new WebSocket(`ws://127.0.0.1:${port}`),
     queue = [];
-  let pending, error;
+  let pending,
+    error,
+    sequence = 0;
+  const accept = (value) => {
+    if (!bounded) return value;
+    ws.send(JSON.stringify({ transportReceipt: ++sequence }));
+    return value.data;
+  };
   ws.on("message", (raw) => {
     const value = JSON.parse(String(raw));
     if (pending) {
       const p = pending;
       pending = undefined;
-      p.resolve(value);
+      p.resolve(accept(value));
     } else queue.push(value);
   });
   ws.on("close", () => {
@@ -374,7 +427,7 @@ async function transfer(root, port, count = 16, hold = false) {
       ws.send(JSON.stringify(m));
     },
     receive() {
-      if (queue.length) return Promise.resolve(queue.shift());
+      if (queue.length) return Promise.resolve(accept(queue.shift()));
       if (error) return Promise.reject(error);
       return new Promise((resolve, reject) => (pending = { resolve, reject }));
     },
@@ -432,6 +485,18 @@ async function rehearse(root, fixture) {
     return result;
   };
   try {
+    const cgroup = fs
+      .readFileSync("/proc/self/cgroup", "utf8")
+      .trim()
+      .split("::")
+      .at(-1);
+    const cgroupFiles = (name) =>
+      fs.readFileSync(path.join("/sys/fs/cgroup", cgroup, name), "utf8").trim();
+    const containment = {
+      cgroup,
+      memoryMax: cgroupFiles("memory.max"),
+      memorySwapMax: cgroupFiles("memory.swap.max"),
+    };
     const initial = await exec("start", "baseline");
     let port = initial.port;
     const a1 = await health(port);
@@ -448,10 +513,19 @@ async function rehearse(root, fixture) {
       while (!(await stalled.reader.read()).done) {}
     }, /closed|disconnect|RPC|stream/);
     stalled.ws.terminate();
-    await exec("start", "512k");
+    await exec("start", boundedMode);
     const b = await health(port);
     assert.equal(b.runtime.minimum, 524288);
-    const bodyB = await transfer(root, port);
+    assert.equal(b.runtime.maximum, limits.window);
+    assert.equal(b.forwardLimit, limits.transport.connection);
+    const childGroup = fs
+      .readFileSync(`/proc/${b.pid}/cgroup`, "utf8")
+      .trim()
+      .split("::")
+      .at(-1);
+    assert.equal(childGroup, containment.cgroup);
+    const bodyB = await transfer(root, port, 16, false, true);
+    const stalledB = await transfer(root, port, 10000, true, true);
     // A resource-watchdog stop exits only the private child with a distinct code.
     await exec("probe-memory");
     for (let i = 0; i < 100 && (await command(root, "status")).running; i++)
@@ -459,17 +533,22 @@ async function rehearse(root, fixture) {
     const fault = await exec("status");
     assert.equal(fault.running, false);
     assert.equal(fault.lastExit.code, 72);
+    await assert.rejects(() => health(port));
+    await assert.rejects(async () => {
+      while (!(await stalledB.reader.read()).done) {}
+    }, /closed|disconnect|RPC|stream/);
+    stalledB.ws.terminate();
     await exec("start", "baseline");
     const a2 = await health(port);
     assert.equal(a2.sha256, a1.sha256);
     const bodyA2 = await transfer(root, port);
     await exec("stop");
-    const file = path.join(root, "releases/512k/host.js"),
+    const file = path.join(root, "releases", boundedMode, "host.js"),
       before = fs.readFileSync(file, "utf8");
     fs.appendFileSync(file, "\n// corrupt candidate");
-    await assert.rejects(() => exec("start", "512k"), /hash mismatch/);
+    await assert.rejects(() => exec("start", boundedMode), /hash mismatch/);
     fs.writeFileSync(file, before);
-    await exec("start", "512k");
+    await exec("start", boundedMode);
     await exec("crash");
     for (let i = 0; i < 100 && (await command(root, "status")).running; i++)
       await pause(20);
@@ -485,6 +564,9 @@ async function rehearse(root, fixture) {
     assert.equal((await health(port)).sha256, a1.sha256);
     await exec("stop");
     await exec("shutdown");
+    await assert.rejects(() => health(port));
+    containment.memoryPeak = cgroupFiles("memory.peak");
+    containment.memoryEvents = cgroupFiles("memory.events");
     return {
       root,
       port,
@@ -492,12 +574,15 @@ async function rehearse(root, fixture) {
       health: { a1, b, a2 },
       transfers: { bodyA1, bodyB, bodyA2 },
       activeTransferRejectedOnStop: true,
+      boundedTransferRejectedOnWatchdog: true,
+      containment,
       syntheticMemoryFault: true,
       independentSupervisorMemoryFault: true,
       hashMismatchRejected: true,
       crashRecovery: true,
       finalListenerClosed: true,
-      supervisor: "owned Node child processes; systemd activation unavailable",
+      supervisor:
+        "owned Node child processes; cgroup read from rehearsal runner",
     };
   } finally {
     try {
@@ -510,7 +595,7 @@ async function main() {
   const [action, root, arg] = process.argv.slice(2);
   if (!root)
     throw Error(
-      "Usage: rpc-isolated-supervisor.cjs init|serve|start|stop|status|probe-memory|crash|shutdown|rehearse ROOT [CORES|MODE]",
+      "Usage: rpc-isolated-supervisor.cjs init|serve|start|stop|status|probe-memory|crash|shutdown|rehearse ROOT [CORES|baseline|512k|bounded-512k]",
     );
   if (action === "service") return service(root, arg, Number(process.argv[5]));
   if (action === "init") return init(root, arg);
