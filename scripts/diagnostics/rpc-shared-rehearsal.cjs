@@ -20,8 +20,21 @@ const evidence = { steps: [] };
 const fixtureUrl = "data:application/vnd.codex-isolated,statsig/bootstrap";
 const children = new Set();
 let memorySampler;
-const digest = (file) =>
-  createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+let memoryObserver;
+const digest = (file) => {
+  // The CLI is 281 MiB. Verification must not retain a CLI-sized Buffer.
+  const hash = createHash("sha256");
+  const buffer = Buffer.allocUnsafe(256 * 1024);
+  const fd = fs.openSync(file, "r");
+  try {
+    let bytes;
+    while ((bytes = fs.readSync(fd, buffer, 0, buffer.length, null)))
+      hash.update(buffer.subarray(0, bytes));
+    return hash.digest("hex");
+  } finally {
+    fs.closeSync(fd);
+  }
+};
 const cgroup = fs.readFileSync("/proc/self/cgroup", "utf8");
 const memory = path.join("/sys/fs/cgroup", cgroup.trim().split("::")[1]);
 const readMemory = (name) =>
@@ -41,6 +54,7 @@ const save = () =>
     JSON.stringify(evidence, null, 2) + "\n",
   );
 const record = (step, data) => {
+  memoryObserver?.phase(step);
   const memoryCurrent = Number(readMemory("memory.current"));
   const memoryPeak = Number(readMemory("memory.peak"));
   evidence.steps.push({ step, ...data, memoryCurrent, memoryPeak });
@@ -185,6 +199,13 @@ async function main() {
   );
   assert.equal(readMemory("memory.max"), "2147483648");
   assert.equal(readMemory("memory.swap.max"), "0");
+  if (process.env.REHEARSAL_MEMORY_DIRECTORY) {
+    memoryObserver = require("./rpc-memory-observer.cjs").observe(
+      process.env.REHEARSAL_MEMORY_DIRECTORY,
+      memory,
+    );
+    require("./rpc-memory-node.cjs");
+  }
   assert.equal(process.env.CODEX_HOME, path.join(root, "profile/codex"));
   assert.equal(process.env.HOME, path.join(root, "profile"));
   assert.ok(
@@ -634,6 +655,8 @@ globalThis.fetch = (input, init) => {
         "--require=" + fixturePreload,
         process.env.REHEARSAL_CAPTURE &&
           "--require=" + process.env.REHEARSAL_CAPTURE,
+        process.env.REHEARSAL_MEMORY_DIRECTORY &&
+          "--require=" + path.join(control, "rpc-memory-node.cjs"),
       ]
         .filter(Boolean)
         .join(" "),
@@ -668,6 +691,7 @@ globalThis.fetch = (input, init) => {
   }
 
   async function health(release, label) {
+    memoryObserver?.phase(label + "-bootstrap");
     const context = await browser.newContext({ ignoreHTTPSErrors: true });
     try {
       const page = await context.newPage();
@@ -683,16 +707,21 @@ globalThis.fetch = (input, init) => {
           );
       });
       const result = await page.goto(origin, { waitUntil: "domcontentloaded" });
+      memoryObserver?.phase(label + "-document-loaded");
       assert.equal(result.status(), 200);
       await page.waitForFunction(() => !!window.electronBridge);
       await until("browser WebSocket upgrade", () => protocol.length > 0);
+      memoryObserver?.phase(label + "-fixture-transfer");
       assert.equal(
         protocol[0],
         release === "B" ? "codex-ipc-budget-v1" : "legacy",
       );
       const editor = page.locator('textarea, [contenteditable="true"]').first();
       const [{ ipc, bodies }, editorVisible] = await Promise.all([
-        ipcProbe(release),
+        ipcProbe(release).then((result) => {
+          memoryObserver?.phase(label + "-fixture-complete");
+          return result;
+        }),
         editor.waitFor({ state: "visible", timeout: 8000 }).then(
           () => true,
           () => false,
@@ -717,6 +746,10 @@ globalThis.fetch = (input, init) => {
         bodyMatches,
         ...(release === "B" && { processTree: processTree() }),
       });
+      if (process.env.REHEARSAL_MEMORY_DIRECTORY) {
+        await delay(30_000);
+        record(label + "-settled", {});
+      }
       return { editorVisible, bodies };
     } finally {
       await context.close();
@@ -739,9 +772,39 @@ globalThis.fetch = (input, init) => {
       childReaped: true,
       code,
     });
+    if (process.env.REHEARSAL_MEMORY_DIRECTORY) {
+      await delay(30_000);
+      record(label + "-stop-settled", {});
+    }
   }
 
   try {
+    // Optional balanced memory-only order. The default still exercises crashes.
+    if (process.env.REHEARSAL_MEMORY_ORDER) {
+      assert.ok(memoryObserver, "Memory order requires isolated attribution");
+      const order = process.env.REHEARSAL_MEMORY_ORDER.split(",");
+      assert.ok(
+        order.length >= 3 && order.every((arm) => ["A", "B"].includes(arm)),
+      );
+      assert.equal(order.at(-1), "A", "Always finish by restoring A");
+      for (const [index, release] of order.entries()) {
+        const label = `memory-${index}-${release}`;
+        const active = await activate(release, label);
+        await health(release, label);
+        await stop(active, label);
+      }
+      record("rollback", {
+        exactAArtifacts: artifactManifest("A"),
+        memoryOrder: order,
+      });
+      assert.ok(
+        Number(readMemory("memory.peak")) <= 1280 * 1024 * 1024,
+        "Full stack exceeded the experimental 1,280 MiB acceptance ceiling",
+      );
+      for (const event of ["max", "oom", "oom_kill", "oom_group_kill"])
+        assert.equal(readCounters("memory.events")[event], 0);
+      return;
+    }
     const a = await activate("A", "A-before");
     await health("A", "A-before");
     await stop(a, "A-before");
@@ -834,6 +897,13 @@ globalThis.fetch = (input, init) => {
       appLog.kill("SIGTERM");
       await done;
     }
+    if (memoryObserver) {
+      await delay(1000);
+      record("cleanup", {
+        browserClosed: true,
+        appServerReaped: appLog.exitCode !== null || appLog.signalCode !== null,
+      });
+    }
   }
 }
 
@@ -845,6 +915,7 @@ main()
   })
   .finally(() => {
     clearInterval(memorySampler);
+    memoryObserver?.close();
     for (const child of children) child.kill("SIGKILL");
     if (fs.existsSync(memory + "/memory.peak")) {
       evidence.memory = {
