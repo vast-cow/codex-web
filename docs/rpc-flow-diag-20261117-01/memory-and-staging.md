@@ -1,5 +1,7 @@
 # Memory attribution and contained authenticated staging
 
+Current isolated-only follow-up: [two-phase memory criteria, excursion evidence and staging decision](two-phase-memory.md). It supersedes this historical document's manual phase/checkpoint proposal and next-action recommendation; it does not authorize authentication or staging. Results and the original lifecycle gate below remain historical evidence.
+
 **NO-GO to begin authenticated staging; NO-GO for live A/B.** This continues `7d03564`. Production remains on its original A process and release. The 1,280-MiB lifecycle gate has not been raised. The new code changes only disposable diagnostic tooling, including bounded artifact hashing; it does not change the RPC configuration or application implementation. Authenticated startup and the real parent-job handoff still require a separately authorized staging rehearsal.
 
 ## Measurement and interpretation

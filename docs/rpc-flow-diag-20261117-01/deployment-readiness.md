@@ -1,5 +1,7 @@
 # RPC window deployment readiness
 
+Current acceptance review: [two-phase memory policy and staging prerequisites](two-phase-memory.md). Its decision supersedes the next-action recommendation below; providing credentials is not the next authorized action.
+
 Follow-up from `7d03564`: [memory attribution, acceptance review and authenticated staging runbook](memory-and-staging.md). The original gate and results below are retained; the follow-up does not authorize a production trial.
 
 **NO-GO for a live A/B trial.** The isolated cutover, forced-crash recovery, active-stream shutdown, and restoration of exact A artifacts passed. Both full-stack runs exceeded the proposed 1,280 MiB charged-memory ceiling. Authenticated startup, the actual parent-job handoff, and a staged external Tailscale path remain unverified. Production stayed on its original release throughout this work.
